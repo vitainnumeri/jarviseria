@@ -85,7 +85,7 @@ git clone https://github.com/vitainnumeri/jarviseria
 cd jarviseria
 
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[audio,asr-local,llm]"
+pip install -e ".[audio,asr-local,llm,phone]"
 
 cp .env.example .env      # e metti dentro ANTHROPIC_API_KEY
 ```
@@ -109,6 +109,9 @@ ElevenLabs o OpenAI in `config/local.yaml`.
 
 Con Piper e faster-whisper, l'unica cosa che esce dal computer e' il **testo**
 della conversazione.
+
+In modalita' telefono l'audio viaggia fra telefono e PC sulla tua rete Wi-Fi,
+cifrato con TLS: non esce da casa e non passa da nessun servizio esterno.
 
 ---
 
@@ -293,7 +296,8 @@ jarvis calibrate     controlla il profilo e propone le soglie
 jarvis record        registra un file audio (per preparare la prova)
 jarvis benchmark     LA PROVA: misura falsi accessi e falsi rifiuti
 jarvis diag          monitor dal vivo: chi sto sentendo adesso
-jarvis run           avvia la conversazione vocale
+jarvis run           avvia la conversazione vocale (microfono del PC)
+jarvis serve         modalita' telefono: il telefono fa da microfono
 jarvis chat          stessa testa, da tastiera (per provare senza microfono)
 jarvis devices       elenco dei dispositivi audio
 jarvis plan          il piano d'asta: quanto spendere per ogni slot
@@ -309,6 +313,88 @@ jarvis chat "quanto vale Lookman in un'asta da 500?"
 ```
 
 ---
+
+## Usarlo dal telefono
+
+All'asta il portatile aperto sul tavolo e' scomodo. Il telefono no.
+
+```bash
+jarvis serve
+```
+
+```
+==========================================================
+  Dal telefono, sulla STESSA rete Wi-Fi del PC, apri:
+
+      https://192.168.1.42:8765
+
+  Il certificato e' autofirmato, quindi la prima volta il browser
+  mostra un avviso di sicurezza: e' atteso. Apri i dettagli e
+  scegli di procedere (iOS: 'Mostra dettagli' -> 'Visita il sito').
+==========================================================
+```
+
+Apri l'indirizzo dal telefono, tocca **Collega**, concedi il microfono. Il
+telefono diventa microfono e altoparlante; VAD, biometria, Whisper, Claude e
+sintesi girano tutti sul PC, che puoi lasciare nella borsa.
+
+Nessuna app da installare, uguale su iOS e Android. La pagina mostra in tempo
+reale cosa sta succedendo: quando ti sta ascoltando, quando ha ignorato una
+voce (e con che punteggio), cosa ha capito e cosa ha risposto.
+
+**Con gli auricolari e' anche la configurazione migliore in assoluto.** Il
+microfono ti sta a cinque centimetri dalla bocca: e' il vantaggio di livello
+descritto piu' su, quello che nessun parametro software puo' pareggiare.
+
+### Perche' https, e perche' l'avviso
+
+Non e' una scelta: `getUserMedia` funziona solo in un "contesto sicuro". Da
+`http://192.168.1.42:8765` il browser **non dara' mai** accesso al microfono, ne'
+su iOS ne' su Android, e non esiste impostazione che lo cambi.
+
+Quindi il server genera da solo un certificato per l'IP del tuo PC. Essendo
+autofirmato, la prima volta il browser protesta: accetti l'avviso una volta e
+non lo rivedi. Il certificato si rigenera da solo se cambi rete e il PC prende
+un altro indirizzo.
+
+L'alternativa sarebbe un tunnel pubblico tipo ngrok, che pero' farebbe passare
+la tua voce dai server di qualcun altro. Il certificato locale e' piu' seccante
+per trenta secondi e piu' sano per sempre.
+
+### Tre dettagli che contano
+
+**Il guadagno automatico e' spento apposta.** La pagina chiede al browser
+`autoGainControl: false`. Con l'AGC acceso, il browser alzerebbe il volume delle
+voci lontane fino al livello della tua, mandando all'aria il filtro di campo
+vicino — cioe' il filtro che scarta chi parla dall'altra parte della stanza. E'
+disattivata anche la soppressione del rumore, che altera il timbro: e il timbro
+e' esattamente cio' che il riconoscimento del parlante misura.
+
+**L'annullamento d'eco invece e' acceso**, ed e' quello nativo del telefono: e'
+migliore della correlazione che usa la modalita' desktop, quindi in modalita'
+telefono la guardia d'eco interna viene disattivata.
+
+**Lo schermo resta acceso.** La pagina chiede un wake lock: schermo spento
+significa collegamento chiuso, e in mezzo a un'asta non e' il momento. Se il
+collegamento cade lo stesso, riapri la pagina e riprendi: **budget, rosa e
+conversazione vivono sul PC**, non sul telefono, quindi i crediti spesi non si
+perdono.
+
+### Un telefono alla volta
+
+Un secondo telefono viene rifiutato con un messaggio chiaro invece di entrare a
+meta' nella conversazione. L'assistente ha una sola rosa, un solo budget e un
+solo filo del discorso.
+
+### Se qualcosa non va
+
+| Sintomo | Causa quasi sempre |
+|---|---|
+| "Serve https" nella pagina | Hai aperto `http://`. Rimetti `https://` |
+| Microfono negato | Impostazioni del sito → consenti microfono → ricarica |
+| La pagina non si apre | Telefono e PC su reti diverse (una e' sul 4G?) |
+| Si apre ma non risponde | Il PC ha il firewall sulla porta 8765 |
+| Si sente a scatti | Wi-Fi debole: la voce ha bisogno di 32 KB/s scarsi, ma stabili |
 
 ## Cosa sa fare, in asta e in formazione
 
@@ -434,6 +520,9 @@ risposta viene detta **una frase alla volta** mentre il modello scrive ancora.
 - **Le quotazioni sono quelle del file che carichi**, non di un archivio interno.
 - **I regolamenti cambiano da lega a lega.** L'assistente usa i valori standard e
   chiede conferma su assist, portiere imbattuto e modificatore di difesa.
+- **La modalita' telefono ha bisogno del PC acceso e sulla stessa rete.** Il
+  telefono da solo non fa girare ECAPA e Whisper: e' un microfono intelligente,
+  non un'installazione autonoma.
 
 ---
 
@@ -445,6 +534,10 @@ di persone che non ti hanno dato nessun consenso, quindi resta locale e basta.
 
 Con la configurazione di default (Piper + faster-whisper) l'unica cosa che esce
 dal tuo computer e' il testo della conversazione, diretto all'API di Claude.
+
+In modalita' telefono (`jarvis serve`) l'audio non lascia la rete locale: viaggia
+cifrato fra telefono e PC, e la parte pesante resta sul PC. Nessun servizio
+esterno vede la tua voce.
 
 Se registri altre persone per costruire la coorte, diglielo.
 
@@ -461,6 +554,7 @@ src/jarvis/
   tts/          sintesi vocale (Piper locale, ElevenLabs, OpenAI)
   fanta/        listone, motore d'asta, motore di formazione, regolamento
   session/      orchestratore full-duplex, parola di attivazione
+  web/          modalita' telefono: server, trasporto audio, TLS, pagina
 ```
 
 I provider sono intercambiabili: ognuno e' dietro un'interfaccia minima, e
@@ -473,11 +567,15 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-216 test, 81% di copertura, e nessuno di essi richiede microfono, modelli o
-rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
+237 test, e nessuno di essi richiede microfono, modelli o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
 
 Il test che conta e' `test_session.py::test_stanza_affollata_una_sola_risposta`:
 sette persone parlano a turno attraverso la catena completa, ne esce una sola
 risposta. Accanto c'e'
 `test_l_estraneo_viene_scartato_prima_della_fine_della_frase`, che verifica il
 rifiuto precoce — un estraneo non arriva mai alla trascrizione.
+
+La modalita' telefono ha la sua versione della stessa prova: `test_web.py`
+avvia un server vero, ci collega un client WebSocket vero e gli spara dentro la
+voce sintetica. Con la voce del proprietario torna una risposta con l'audio; con
+la voce di un estraneo non torna niente — nessun evento, nessun byte.

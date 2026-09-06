@@ -17,6 +17,9 @@ silero-vad>=5.1
 # ASR in locale (alternativa: OPENAI_API_KEY + provider "openai")
 faster-whisper>=1.0
 
+# Modalita' telefono (jarvis serve)
+aiohttp>=3.9
+
 # Provider cloud opzionali (TTS ElevenLabs / OpenAI, ASR OpenAI)
 requests>=2.31
 openai>=1.40

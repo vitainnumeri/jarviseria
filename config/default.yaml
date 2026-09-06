@@ -92,6 +92,11 @@ fanta:
   # Ripartizione di riferimento del budget (%): il motore d'asta parte da qui.
   budget_split: {P: 0.07, D: 0.15, C: 0.30, A: 0.48}
 
+web:
+  # Modalita' telefono (jarvis serve). Il certificato autofirmato vive qui:
+  # e' legato all'IP del PC e viene rigenerato da solo se cambi rete.
+  cert_dir: profiles/tls
+
 log:
   level: INFO
   file: logs/jarvis.log

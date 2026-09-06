@@ -6,7 +6,8 @@
     jarvis record        registra un file audio (per preparare la prova)
     jarvis benchmark     LA PROVA: misura quante volte sbaglia, e in che direzione
     jarvis diag          ascolta N secondi e dice, secondo per secondo, se sente te
-    jarvis run           avvia la conversazione vocale
+    jarvis run           avvia la conversazione vocale (microfono del PC)
+    jarvis serve         avvia la modalita' telefono: il telefono fa da microfono
     jarvis chat          stessa testa, da tastiera (per provare senza microfono)
     jarvis devices       elenco dei dispositivi audio
     jarvis plan          piano d'asta
@@ -317,6 +318,48 @@ def cmd_run(args, cfg) -> int:
     return 0
 
 
+def cmd_serve(args, cfg) -> int:
+    """Modalita' telefono: il telefono fa da microfono, il PC fa il lavoro.
+
+    Serve https e non e' un vezzo: senza contesto sicuro il browser del telefono
+    non concede il microfono, ne' su iOS ne' su Android.
+    """
+    from aiohttp import web as aioweb
+
+    from .web.server import build_server
+    from .web.tls import build_ssl_context, local_ip
+
+    server = build_server(cfg)
+    ip = args.host if args.host not in (None, "0.0.0.0") else local_ip()
+    ssl_context = None
+    if not args.insecure:
+        ssl_context = build_ssl_context(cfg.resolve_path("web.cert_dir", "profiles/tls"), ip)
+
+    schema = "http" if args.insecure else "https"
+    url = f"{schema}://{ip}:{args.port}"
+
+    print("\n" + "=" * 58)
+    print("  Dal telefono, sulla STESSA rete Wi-Fi del PC, apri:")
+    print(f"\n      {url}\n")
+    if not args.insecure:
+        print("  Il certificato e' autofirmato, quindi la prima volta il browser")
+        print("  mostra un avviso di sicurezza: e' atteso. Apri i dettagli e")
+        print("  scegli di procedere (iOS: 'Mostra dettagli' -> 'Visita il sito').")
+    else:
+        print("  ATTENZIONE: --insecure serve solo per provare da questo stesso PC.")
+        print("  Da telefono il microfono NON funzionera' senza https.")
+    print("\n  Poi tocca 'Collega' e concedi il microfono.")
+    print("  Usa gli auricolari: e' anche la condizione migliore per")
+    print("  farsi riconoscere in mezzo ad altre voci.")
+    print("=" * 58 + "\n")
+
+    aioweb.run_app(
+        server.app, host=args.host or "0.0.0.0", port=args.port,
+        ssl_context=ssl_context, print=None,
+    )
+    return 0
+
+
 def cmd_chat(args, cfg) -> int:
     from .session.orchestrator import TextSession
 
@@ -429,6 +472,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("run", help="avvia la conversazione vocale")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("serve", help="modalita' telefono: il telefono fa da microfono")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--host", help="interfaccia su cui ascoltare (default: tutte)")
+    p.add_argument("--insecure", action="store_true",
+                   help="http invece di https: solo per prove da questo PC")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("chat", help="conversazione da tastiera")
     p.add_argument("message", nargs="*", help="domanda singola; senza, entra in interattivo")

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>JarvisEria</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #171c24; --line: #262d38;
+    --text: #e8ecf2; --muted: #8b96a5;
+    --ok: #35c07a; --warn: #e0a33a; --off: #6b7684; --accent: #4a9eff;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100dvh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header .sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  #stato {
+    margin: 18px; padding: 22px 18px; border-radius: 16px;
+    background: var(--panel); border: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px;
+  }
+  #spia {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--off); flex: none; transition: background .15s;
+  }
+  #spia.attiva { background: var(--ok); }
+  #spia.tu { background: var(--accent); box-shadow: 0 0 0 6px rgba(74,158,255,.18); }
+  #spia.altri { background: var(--warn); }
+  #spia.parla { background: var(--ok); box-shadow: 0 0 0 6px rgba(53,192,122,.18); }
+  #stato-testo { font-size: 17px; font-weight: 500; }
+  #stato-nota { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  #log {
+    flex: 1; overflow-y: auto; padding: 0 18px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .riga { padding: 11px 14px; border-radius: 14px; max-width: 86%; font-size: 15px; }
+  .riga.tu { background: #1d2a3d; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .riga.bot { background: var(--panel); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .riga.sys { background: none; color: var(--muted); font-size: 13px; align-self: center;
+              text-align: center; max-width: 100%; padding: 4px; }
+  .punteggio { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  footer {
+    padding: 12px 18px calc(12px + var(--safe-b));
+    border-top: 1px solid var(--line); display: flex; gap: 10px;
+  }
+  button {
+    flex: 1; padding: 16px; font-size: 16px; font-weight: 600; font-family: inherit;
+    border: none; border-radius: 14px; color: #08111c; background: var(--accent);
+    cursor: pointer; touch-action: manipulation;
+  }
+  button.secondario { flex: 0 0 auto; padding: 16px 20px; background: var(--panel);
+                      color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .4; }
+  #avviso {
+    margin: 0 18px 12px; padding: 12px 14px; border-radius: 12px; font-size: 13px;
+    background: #2a2113; color: #f0cf92; border: 1px solid #4a3a1c; display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>JarvisEria</h1>
+  <span class="sub" id="conn">non collegato</span>
+</header>
+
+<div id="stato">
+  <div id="spia"></div>
+  <div>
+    <div id="stato-testo">Pronto a collegarsi</div>
+    <div id="stato-nota">Tocca "Collega" e concedi il microfono</div>
+  </div>
+</div>
+
+<div id="avviso"></div>
+<div id="log"></div>
+
+<footer>
+  <button id="collega">Collega</button>
+  <button id="zitto" class="secondario" disabled>Zitto</button>
+</footer>
+
+<script>
+const UPLINK = 16000, DOWNLINK = 24000;
+const $ = (id) => document.getElementById(id);
+
+let ws = null, ctx = null, stream = null, node = null, wakeLock = null;
+let nextPlayTime = 0, sorgenti = [], gain = null;
+
+// ---------------------------------------------------------------- interfaccia
+function stato(classe, testo, nota) {
+  $('spia').className = classe;
+  $('stato-testo').textContent = testo;
+  if (nota !== undefined) $('stato-nota').textContent = nota;
+}
+function riga(tipo, testo, extra) {
+  const el = document.createElement('div');
+  el.className = 'riga ' + tipo;
+  el.textContent = testo;
+  if (extra) {
+    const p = document.createElement('div');
+    p.className = 'punteggio';
+    p.textContent = extra;
+    el.appendChild(p);
+  }
+  $('log').appendChild(el);
+  $('log').scrollTop = $('log').scrollHeight;
+  while ($('log').children.length > 60) $('log').removeChild($('log').firstChild);
+}
+function avviso(testo) {
+  $('avviso').textContent = testo;
+  $('avviso').style.display = testo ? 'block' : 'none';
+}
+
+// ------------------------------------------------------- cattura dal microfono
+// Il worklet gira nel thread audio: ricampiona a 16 kHz e manda solo interi a
+// 16 bit, cosi' sul filo passano 32 KB/s invece di 384.
+const WORKLET = `
+class Capture extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.ratio = sampleRate / ${UPLINK};
+    this.pos = 0;
+    this.tail = new Float32Array(0);
+  }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    const buf = new Float32Array(this.tail.length + ch.length);
+    buf.set(this.tail); buf.set(ch, this.tail.length);
+    const out = [];
+    let p = this.pos;
+    while (p + 1 < buf.length) {
+      const i = Math.floor(p), f = p - i;
+      out.push(buf[i] * (1 - f) + buf[i + 1] * f);
+      p += this.ratio;
+    }
+    const consumed = Math.floor(p);
+    this.tail = buf.slice(consumed);
+    this.pos = p - consumed;
+    if (out.length) {
+      const pcm = new Int16Array(out.length);
+      for (let i = 0; i < out.length; i++) {
+        const s = Math.max(-1, Math.min(1, out[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      this.port.postMessage(pcm, [pcm.buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor('capture', Capture);
+`;
+
+async function avviaCattura() {
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      channelCount: 1,
+      // L'annullamento d'eco serve: senza, il telefono si riascolta.
+      echoCancellation: true,
+      // Queste due invece NO, ed e' importante.
+      // Il guadagno automatico alzerebbe le voci lontane fino al livello della
+      // tua, annullando il filtro che scarta chi e' lontano dal microfono.
+      autoGainControl: false,
+      // La soppressione del rumore altera il timbro, cioe' proprio cio' che il
+      // riconoscimento del parlante misura.
+      noiseSuppression: false
+    }
+  });
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+
+  gain = ctx.createGain();
+  gain.connect(ctx.destination);
+
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+
+  node = new AudioWorkletNode(ctx, 'capture');
+  node.port.onmessage = (e) => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(e.data.buffer);
+  };
+  ctx.createMediaStreamSource(stream).connect(node);
+}
+
+// ------------------------------------------------------------- riproduzione
+function riproduci(arrayBuffer) {
+  if (!ctx) return;
+  const pcm = new Int16Array(arrayBuffer);
+  const buf = ctx.createBuffer(1, pcm.length, DOWNLINK);
+  const dati = buf.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) dati[i] = pcm[i] / 32768;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(gain);
+  // Un filo di scorta: se il blocco arriva in ritardo si sentirebbe un buco.
+  const quando = Math.max(ctx.currentTime + 0.06, nextPlayTime);
+  src.start(quando);
+  nextPlayTime = quando + buf.duration;
+  sorgenti.push(src);
+  src.onended = () => { sorgenti = sorgenti.filter((s) => s !== src); };
+}
+
+function svuota() {
+  // Barge-in: butto via tutto cio' che era in coda, altrimenti continuerebbe a
+  // parlarmi sopra per i secondi gia' spediti.
+  sorgenti.forEach((s) => { try { s.stop(); } catch (e) {} });
+  sorgenti = [];
+  nextPlayTime = 0;
+}
+
+// -------------------------------------------------------------- collegamento
+function collega() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    $('conn').textContent = 'collegato';
+    $('zitto').disabled = false;
+    stato('attiva', 'In ascolto', 'Rispondo solo alla tua voce');
+  };
+
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) { riproduci(e.data); return; }
+    const m = JSON.parse(e.data);
+    switch (m.type) {
+      case 'ready':   riga('sys', m.text); break;
+      case 'error':   avviso(m.text); break;
+      case 'owner':   stato('tu', 'Ti sto ascoltando', 'punteggio ' + m.score); break;
+      case 'stranger':
+      case 'ignored': stato('altri', 'Voce ignorata', 'non sei tu: punteggio ' + m.score); break;
+      case 'no_wake_word': stato('altri', 'Manca la parola chiave', 'di\' "Jarvis" prima'); break;
+      case 'transcript': riga('tu', m.text, 'voce riconosciuta: ' + m.score);
+                         stato('parla', 'Sto rispondendo', ''); break;
+      case 'answer':  riga('bot', m.text); break;
+      case 'idle':    stato('attiva', 'In ascolto', 'Rispondo solo alla tua voce'); break;
+      case 'flush':   svuota(); break;
+      case 'duck':    if (gain) gain.gain.value = Math.pow(10, m.db / 20); break;
+      case 'unduck':  if (gain) gain.gain.value = 1; break;
+      case 'status':
+      case 'stats':   riga('sys', m.text); break;
+    }
+  };
+
+  ws.onclose = () => {
+    $('conn').textContent = 'scollegato';
+    $('zitto').disabled = true;
+    $('collega').disabled = false;
+    $('collega').textContent = 'Ricollega';
+    stato('', 'Collegamento chiuso', 'Tocca "Ricollega"');
+  };
+
+  ws.onerror = () => avviso('Errore di collegamento. Il PC e\' acceso e sulla stessa rete?');
+}
+
+// Lo schermo che si spegne chiude il collegamento: lo tengo sveglio.
+async function tieniSveglio() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* non supportato: pazienza */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !wakeLock) tieniSveglio();
+});
+
+$('collega').onclick = async () => {
+  $('collega').disabled = true;
+  avviso('');
+  try {
+    if (!ctx) await avviaCattura();
+    await tieniSveglio();
+    collega();
+  } catch (err) {
+    $('collega').disabled = false;
+    if (err && err.name === 'NotAllowedError') {
+      avviso('Microfono negato. Nelle impostazioni del sito consenti il microfono e ricarica.');
+    } else if (!window.isSecureContext) {
+      avviso('Serve https: apri l\'indirizzo con https:// davanti, non http://');
+    } else {
+      avviso('Non riesco ad aprire il microfono: ' + (err && err.message ? err.message : err));
+    }
+  }
+};
+
+$('zitto').onclick = () => {
+  svuota();
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'stop' }));
+};
+
+if (!navigator.mediaDevices || !window.isSecureContext) {
+  avviso('Questa pagina deve essere aperta in https, altrimenti il browser non da\' accesso al microfono.');
+}
+</script>
+</body>
+</html>

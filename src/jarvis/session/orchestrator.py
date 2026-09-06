@@ -65,6 +65,7 @@ class VoiceSession:
         synthesizer,
         speaker: Speaker,
         cfg,
+        on_event=None,
     ):
         self.mic = mic
         self.vad = vad
@@ -74,6 +75,9 @@ class VoiceSession:
         self.synthesizer = synthesizer
         self.speaker = speaker
         self.cfg = cfg
+        # Canale facoltativo verso l'interfaccia (la pagina sul telefono):
+        # dice cosa sta succedendo, senza che nulla dipenda dal fatto che ci sia.
+        self._on_event = on_event
 
         self.segmenter = TurnSegmenter(
             sample_rate=mic.sample_rate,
@@ -107,6 +111,20 @@ class VoiceSession:
         self._worker: threading.Thread | None = None
         self._window_scores: list = []
         self._last_checked_samples = 0
+
+    def emit(self, kind: str, **data) -> None:
+        """Notifica un evento all'interfaccia, se qualcuno sta ascoltando.
+
+        Non deve mai poter far cadere la sessione: un'interfaccia lenta o un
+        socket chiuso a meta' non sono un buon motivo per interrompere una
+        conversazione.
+        """
+        if self._on_event is None:
+            return
+        try:
+            self._on_event({"type": kind, **data})
+        except Exception:  # pragma: no cover - l'interfaccia non e' critica
+            log.debug("notifica '%s' non consegnata", kind, exc_info=True)
 
     # ------------------------------------------------------------ ciclo audio
     def run(self, greeting: str | None = None) -> SessionStats:  # pragma: no cover - I/O
@@ -187,12 +205,16 @@ class VoiceSession:
         self._window_scores.append(score)
         decision = self.verifier.stream_decision(self._window_scores)
 
+        if decision is Decision.OWNER and not self.speaker.is_playing:
+            self.emit("owner", score=round(score.owner_score, 3))
+
         if decision is Decision.STRANGER:
             log.debug(
                 "voce estranea scartata dopo %.1fs (punteggio %.2f)",
                 audio.size / self.verifier.cfg.sample_rate, score.owner_score,
             )
             self.stats.turni_ignorati += 1
+            self.emit("stranger", score=round(score.owner_score, 3))
             self._reset_turn_state()
             self.segmenter.abort()
         elif decision is Decision.OWNER and self.speaker.is_playing and self.barge_in:
@@ -217,6 +239,7 @@ class VoiceSession:
         if not result.is_owner:
             self.stats.turni_ignorati += 1
             log.debug("turno ignorato: %s", result.reason)
+            self.emit("ignored", reason=result.reason, score=round(result.score, 3))
             return
 
         # Un turno nuovo sostituisce quello in corso: e' il comportamento giusto
@@ -262,12 +285,14 @@ class VoiceSession:
             if not passed:
                 log.debug("parola di attivazione mancante: '%s'", transcript.text)
                 self.stats.turni_senza_attivazione += 1
+                self.emit("no_wake_word")
                 return
             transcript.text = text
 
             self.stats.turni_miei += 1
             log.info("tu: %s", transcript.text)
             self.transcript.write("utente", transcript.text, punteggio_voce=round(score, 3))
+            self.emit("transcript", text=transcript.text, score=round(score, 3))
 
             spoken: list[str] = []
             for sentence in stream_sentences(self.agent.respond(transcript.text)):
@@ -283,6 +308,8 @@ class VoiceSession:
             if spoken:
                 log.info("assistente: %s", " ".join(spoken))
                 self.transcript.write("assistente", " ".join(spoken))
+                self.emit("answer", text=" ".join(spoken))
+            self.emit("idle")
         except Exception:  # pragma: no cover - la telefonata non deve cadere
             log.exception("errore durante il turno")
 

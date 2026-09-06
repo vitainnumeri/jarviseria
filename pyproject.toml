@@ -26,6 +26,8 @@ audio = [
 asr-local = ["faster-whisper>=1.0"]
 llm = ["anthropic>=0.40"]
 cloud = ["openai>=1.40", "requests>=2.31"]
+# Modalita' telefono: server web + WebSocket
+phone = ["aiohttp>=3.9"]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
 
 [project.scripts]
