@@ -1,0 +1,98 @@
+# Configurazione di default di JarvisEria.
+# Per personalizzare senza toccare questo file: crea config/local.yaml
+# (ha la precedenza, merge ricorsivo) oppure passa --config a `jarvis`.
+
+audio:
+  sample_rate: 16000          # Hz. ECAPA e Whisper lavorano a 16 kHz.
+  frame_ms: 20                # Dimensione del frame di cattura.
+  input_device: null          # null = device di sistema. Usa `jarvis devices` per l'elenco.
+  output_device: null
+  channels: 1
+
+vad:
+  provider: silero            # silero | webrtc | energy
+  threshold: 0.55             # Probabilita' di voce oltre la quale il frame e' "speech".
+  min_speech_ms: 250          # Sotto questa durata e' un rumore, non un turno.
+  min_silence_ms: 600         # Silenzio che chiude il turno (end-of-utterance).
+  pre_roll_ms: 300            # Audio tenuto PRIMA dell'inizio parlato (non tagliare le sillabe).
+  max_utterance_s: 30         # Taglio di sicurezza.
+
+speaker:
+  # ---- IL CUORE DEL SISTEMA: sentire solo il proprietario in una stanza affollata ----
+  model: speechbrain/spkrec-ecapa-voxceleb
+  profile_path: profiles/owner.npz
+
+  accept_threshold: 0.62      # Coseno minimo per APRIRE un turno (voce sconosciuta -> ignorata).
+  continue_threshold: 0.50    # Soglia piu' bassa mentre sto gia' parlando (isteresi anti-drop).
+  reject_margin: 0.10         # Devo somigliare a me stesso ALMENO tanto piu' che a chiunque
+                              # altro nella coorte. E' la regola che uccide i falsi positivi.
+  window_sec: 1.0             # Finestra di analisi del parlante.
+  hop_sec: 0.5                # Passo: decisione ogni 500 ms -> rifiuto precoce degli estranei.
+  min_windows_ratio: 0.6      # Frazione di finestre che deve passare per accettare il turno.
+  early_reject_windows: 3     # Finestre consecutive fallite -> scarto il segmento senza trascriverlo.
+  unlock_after_failures: 2    # Finestre fallite prima di considerare chiuso il mio turno.
+
+  near_field:
+    enabled: true             # Chi e' lontano dal microfono viene scartato per fisica, non per ML.
+    margin_db: 8.0            # dB sopra il rumore di fondo stimato.
+
+  cohort:
+    enabled: true             # Normalizzazione sugli "altri": rende la soglia stabile fra stanze.
+    path: profiles/cohort.npz
+    top_k: 20
+    auto_learn: true          # Le voci rifiutate entrano nella coorte: impara chi c'e' nella stanza.
+    max_size: 300
+
+  adaptation:
+    enabled: true             # Adatta lentamente il profilo a microfono/raffreddore/stanza.
+    min_score: 0.78           # Aggiorno solo con turni di cui sono molto sicuro.
+    rate: 0.05
+
+  wake_word:
+    enabled: false            # In ambienti estremi (sala d'asta) puoi esigere anche una parola chiave.
+    phrases: ["jarvis", "ehi jarvis", "hey jarvis"]
+    timeout_s: 30             # Dopo l'attivazione, per N secondi non serve ripeterla.
+
+asr:
+  provider: faster-whisper    # faster-whisper (locale) | openai
+  model: medium               # tiny | base | small | medium | large-v3
+  language: it
+  compute_type: int8          # int8 | int8_float16 | float16 | float32
+  device: auto                # auto | cpu | cuda
+  initial_prompt: >-
+    Conversazione di fantacalcio in italiano: asta, rosa, quotazioni, crediti,
+    fantamedia, modificatore di difesa, probabili formazioni, rigorista.
+
+llm:
+  provider: anthropic
+  model: claude-opus-5
+  max_tokens: 1024
+  temperature: 0.3
+  history_turns: 12           # Turni di conversazione tenuti in memoria.
+
+tts:
+  provider: piper             # piper (locale, offline) | elevenlabs | openai
+  voice: it_IT-riccardo-x_low
+  model_dir: models/piper
+  speed: 1.08                 # Un filo veloce: in asta i secondi contano.
+  sentence_streaming: true    # Parla la prima frase mentre il modello scrive la seconda.
+
+session:
+  barge_in: true              # Posso interrompere il bot mentre parla.
+  duck_db: -12.0              # Abbasso il volume quando rilevo voce: sento la barge-in.
+  echo_guard: true            # Non mi riascolto: correlazione col segnale riprodotto.
+  echo_corr_threshold: 0.45
+  greeting: "Sono pronto. Dimmi pure."
+
+fanta:
+  mode: classic               # classic | mantra
+  budget: 500
+  slots: {P: 3, D: 8, C: 8, A: 6}
+  listone_path: data/listone.csv
+  # Ripartizione di riferimento del budget (%): il motore d'asta parte da qui.
+  budget_split: {P: 0.07, D: 0.15, C: 0.30, A: 0.48}
+
+log:
+  level: INFO
+  file: logs/jarvis.log
+  transcript: logs/transcript.jsonl

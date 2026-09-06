@@ -1,0 +1,22 @@
+# Nucleo (sempre necessario)
+numpy>=1.24
+pyyaml>=6.0
+python-dotenv>=1.0
+
+# LLM
+anthropic>=0.40
+
+# Audio + riconoscimento del parlante (la parte critica)
+sounddevice>=0.4.6
+soundfile>=0.12
+torch>=2.1
+torchaudio>=2.1
+speechbrain>=1.0
+silero-vad>=5.1
+
+# ASR in locale (alternativa: OPENAI_API_KEY + provider "openai")
+faster-whisper>=1.0
+
+# Provider cloud opzionali (TTS ElevenLabs / OpenAI, ASR OpenAI)
+requests>=2.31
+openai>=1.40

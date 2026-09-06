@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Segreti e configurazione locale
+.env
+config/local.yaml
+
+# Profilo vocale e dati personali (NON committare: sono biometrici)
+profiles/
+*.npz
+recordings/
+data/listone*.csv
+data/listone*.xlsx
+!data/esempio_listone_PLACEHOLDER.csv
+
+# Modelli scaricati
+models/
+*.onnx
+*.bin
+
+# Log
+*.log
+logs/
+.coverage
+htmlcov/

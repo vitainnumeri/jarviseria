@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarviseria"
+version = "0.1.0"
+description = "Assistente vocale full-duplex che risponde solo alla voce del proprietario, specializzato in fantacalcio (aste e formazioni)."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Pipeline audio completa (microfono, VAD, riconoscimento del parlante)
+audio = [
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12",
+    "torch>=2.1",
+    "torchaudio>=2.1",
+    "speechbrain>=1.0",
+    "silero-vad>=5.1",
+]
+asr-local = ["faster-whisper>=1.0"]
+llm = ["anthropic>=0.40"]
+cloud = ["openai>=1.40", "requests>=2.31"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.scripts]
+jarvis = "jarvis.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

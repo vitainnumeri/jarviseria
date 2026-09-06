@@ -1,0 +1,369 @@
+"""Interfaccia a riga di comando.
+
+    jarvis enroll        insegna al sistema la tua voce (da fare per primo)
+    jarvis cohort        aggiunge le voci degli ALTRI (opzionale, ma aiuta molto)
+    jarvis calibrate     controlla il profilo e propone le soglie
+    jarvis diag          ascolta N secondi e dice, secondo per secondo, se sente te
+    jarvis run           avvia la conversazione vocale
+    jarvis chat          stessa testa, da tastiera (per provare senza microfono)
+    jarvis devices       elenco dei dispositivi audio
+    jarvis plan          piano d'asta
+    jarvis lineup        formazione da riga di comando
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from .config import load_config
+from .utils.logging import get_logger, setup_logging
+
+log = get_logger(__name__)
+
+
+# --------------------------------------------------------------- costruttori
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+
+
+def _build_domain(cfg):
+    """Listone + stato d'asta + strumenti + agente."""
+    from .fanta.auction import AuctionState
+    from .fanta.listone import load_listone
+    from .llm.agent import FantaAgent
+    from .llm.tools import FantaTools
+
+    listone = load_listone(cfg.get("fanta.listone_path"))
+    auction = AuctionState(
+        budget=int(cfg.get("fanta.budget", 500)),
+        slots=dict(cfg.get("fanta.slots", {})),
+        budget_split=dict(cfg.get("fanta.budget_split", {})),
+    )
+    tools = FantaTools(listone, auction)
+    return listone, auction, tools, FantaAgent(tools, cfg)
+
+
+def _build_verifier(cfg, *, require_profile: bool = True):
+    from .speaker.embedder import build_embedder
+    from .speaker.profile import Cohort, VoiceProfile
+    from .speaker.verifier import SpeakerVerifier, VerifierConfig
+
+    embedder = build_embedder(cfg.get("speaker.model"), "auto")
+    profile_path = cfg.resolve_path("speaker.profile_path")
+    profile = VoiceProfile.load(profile_path) if require_profile else VoiceProfile()
+    cohort = Cohort.load(
+        cfg.resolve_path("speaker.cohort.path", "profiles/cohort.npz"),
+        max_size=int(cfg.get("speaker.cohort.max_size", 300)),
+    )
+    return embedder, SpeakerVerifier(embedder, profile, VerifierConfig.from_config(cfg), cohort)
+
+
+# ------------------------------------------------------------------- comandi
+def cmd_enroll(args, cfg) -> int:
+    from .speaker.embedder import build_embedder
+    from .speaker.enroll import enroll_from_files, enroll_interactive
+
+    embedder = build_embedder(cfg.get("speaker.model"), "auto")
+    path = cfg.resolve_path("speaker.profile_path")
+    sample_rate = int(cfg.get("audio.sample_rate", 16000))
+
+    if args.files:
+        profile = enroll_from_files(embedder, args.files, path, sample_rate=sample_rate)
+        print(f"Profilo creato da {len(args.files)} file: {path}")
+    else:
+        profile = enroll_interactive(
+            embedder, path, sample_rate=sample_rate,
+            phrase_seconds=args.seconds, device=cfg.get("audio.input_device"),
+        )
+    print(f"{len(profile.embeddings)} impronte, {profile.sample_seconds:.0f}s di voce.")
+    print("\nProssimo passo consigliato:  jarvis calibrate")
+    return 0
+
+
+def cmd_cohort(args, cfg) -> int:
+    from .speaker.embedder import build_embedder
+    from .speaker.enroll import build_cohort_from_files
+
+    embedder = build_embedder(cfg.get("speaker.model"), "auto")
+    cohort = build_cohort_from_files(
+        embedder, args.files, cfg.resolve_path("speaker.cohort.path", "profiles/cohort.npz")
+    )
+    print(f"Coorte: {cohort.size} impronte di altre voci.")
+    print("Con la coorte popolata il sistema diventa piu' severo verso chi ti somiglia.")
+    return 0
+
+
+def cmd_calibrate(args, cfg) -> int:
+    """Controlla la qualita' del profilo e propone le soglie."""
+    from .speaker.enroll import profile_consistency, suggest_threshold
+    from .speaker.profile import Cohort, VoiceProfile
+
+    profile = VoiceProfile.load(cfg.resolve_path("speaker.profile_path"))
+    cohort = Cohort.load(cfg.resolve_path("speaker.cohort.path", "profiles/cohort.npz"))
+
+    consistency = profile_consistency(profile)
+    print(f"Impronte nel profilo : {len(profile.embeddings)}")
+    print(f"Voce registrata      : {profile.sample_seconds:.0f}s")
+    print(f"Coerenza interna     : {consistency:.3f}  (sopra 0.70 e' buono)")
+    print(f"Voci estranee note   : {cohort.size}")
+
+    if consistency < 0.55:
+        print("\nCoerenza bassa: le registrazioni sono disomogenee (rumore, microfoni")
+        print("diversi, o qualcun altro ha letto una frase). Conviene rifare l'arruolamento.")
+
+    suggestion = suggest_threshold(profile, cohort)
+    print("\nSoglie suggerite per config/local.yaml:\n")
+    print("speaker:")
+    print(f"  accept_threshold: {suggestion['accept_threshold']}")
+    print(f"  continue_threshold: {suggestion['continue_threshold']}")
+    if "separation" in suggestion:
+        print(f"\nSeparazione io/altri: {suggestion['separation']:+.3f}")
+    print(f"Nota: {suggestion['note']}")
+    return 0
+
+
+def cmd_diag(args, cfg) -> int:
+    """Ascolta per N secondi e riporta, finestra per finestra, chi sente.
+
+    E' il comando da usare NELLA STANZA vera prima di fidarsi: mostra i
+    punteggi reali con il rumore, le distanze e le voci di quel posto.
+    """
+    import time
+
+    import numpy as np
+
+    from .audio.capture import MicrophoneStream
+    from .audio.vad import build_vad
+
+    _, verifier = _build_verifier(cfg)
+    sample_rate = int(cfg.get("audio.sample_rate", 16000))
+    vad = build_vad(cfg.get("vad.provider", "silero"), sample_rate, float(cfg.get("vad.threshold", 0.55)))
+
+    mic = MicrophoneStream(sample_rate, int(cfg.get("audio.frame_ms", 20)), cfg.get("audio.input_device"))
+    print(f"Ascolto per {args.seconds} secondi. Parla, e fai parlare anche gli altri.\n")
+    print(f"{'t':>6}  {'io':>6}  {'altri':>6}  {'margine':>8}  {'dB':>7}  esito")
+    print("-" * 52)
+
+    mic.start()
+    buffer = np.zeros(0, dtype=np.float32)
+    window = int(verifier.cfg.window_sec * sample_rate)
+    hop = int(verifier.cfg.hop_sec * sample_rate)
+    index = 0
+    started = time.perf_counter()
+    try:
+        while time.perf_counter() - started < args.seconds:
+            frame = mic.read(timeout=0.5)
+            if frame is None:
+                continue
+            if not vad.is_speech(frame):
+                verifier.observe_noise(frame)
+                continue
+            buffer = np.concatenate([buffer, frame])
+            while buffer.size >= window:
+                score = verifier.score_window(buffer[:window], index)
+                buffer = buffer[hop:]
+                index += 1
+                esito = {"owner": "SEI TU", "stranger": "altra voce", "uncertain": "incerto"}[
+                    score.decision.value
+                ]
+                print(
+                    f"{time.perf_counter() - started:6.1f}  {score.owner_score:6.3f}  "
+                    f"{score.cohort_score:6.3f}  {score.margin:8.3f}  {score.level_db:7.1f}  {esito}"
+                )
+    except KeyboardInterrupt:
+        pass
+    finally:
+        mic.stop()
+
+    print(f"\nRumore di fondo stimato: {verifier.noise.value_db:.1f} dB")
+    print(f"Soglia in uso: {verifier.cfg.accept_threshold} (margine richiesto {verifier.cfg.reject_margin})")
+    print("\nSe le tue finestre non superano la soglia: avvicina il microfono o abbassa")
+    print("accept_threshold. Se passano voci altrui: alza la soglia e registra la coorte")
+    print("con  jarvis cohort --files <registrazioni delle altre persone>.")
+    return 0
+
+
+def cmd_run(args, cfg) -> int:
+    """Avvia la sessione vocale."""
+    from .asr import build_transcriber
+    from .audio.capture import MicrophoneStream
+    from .audio.playback import Speaker
+    from .audio.vad import build_vad
+    from .session.orchestrator import VoiceSession
+    from .tts import build_synthesizer
+
+    _, verifier = _build_verifier(cfg)
+    listone, _, _, agent = _build_domain(cfg)
+    sample_rate = int(cfg.get("audio.sample_rate", 16000))
+
+    mic = MicrophoneStream(sample_rate, int(cfg.get("audio.frame_ms", 20)), cfg.get("audio.input_device"))
+    session = VoiceSession(
+        mic=mic,
+        vad=build_vad(cfg.get("vad.provider", "silero"), sample_rate, float(cfg.get("vad.threshold", 0.55))),
+        verifier=verifier,
+        transcriber=build_transcriber(cfg),
+        agent=agent,
+        synthesizer=build_synthesizer(cfg),
+        speaker=Speaker(device=cfg.get("audio.output_device")),
+        cfg=cfg,
+    )
+
+    print("JarvisEria in ascolto. Rispondo solo a te. Ctrl-C per chiudere.")
+    if not listone:
+        print("Nota: listone non caricato, posso parlare di strategia ma non di quotazioni.")
+    stats = session.run(greeting=cfg.get("session.greeting"))
+
+    # La coorte imparata in questa stanza serve anche la prossima volta.
+    if cfg.get("speaker.cohort.auto_learn", True) and verifier.cohort.size:
+        verifier.cohort.save(cfg.resolve_path("speaker.cohort.path", "profiles/cohort.npz"))
+    if cfg.get("speaker.adaptation.enabled", True):
+        verifier.profile.save(cfg.resolve_path("speaker.profile_path"))
+    print("\n" + stats.summary())
+    return 0
+
+
+def cmd_chat(args, cfg) -> int:
+    from .session.orchestrator import TextSession
+
+    listone, _, _, agent = _build_domain(cfg)
+    if not listone:
+        print("Nota: listone non caricato (vedi data/README.md).\n")
+    session = TextSession(agent, cfg.get("log.transcript"))
+    if args.message:
+        print(session.ask(" ".join(args.message)))
+        return 0
+    session.run()
+    return 0
+
+
+def cmd_devices(args, cfg) -> int:
+    from .audio.capture import list_devices
+
+    print(list_devices())
+    print("\nImposta il dispositivo scelto in config/local.yaml (audio.input_device).")
+    return 0
+
+
+def cmd_plan(args, cfg) -> int:
+    _, auction, _, _ = _build_domain(cfg)
+    if args.strategy:
+        auction.apply_strategy(args.strategy)
+    plan = auction.plan()
+    print(f"Budget {auction.budget} crediti — strategia: {args.strategy or 'equilibrata'}\n")
+    for role, detail in plan.items():
+        prezzi = ", ".join(str(p) for p in detail["prezzi_obiettivo"])
+        print(f"{role}: {detail['budget_reparto']:>4} crediti su {detail['slot']} slot   -> {prezzi}")
+    print("\nI prezzi obiettivo sono il punto di partenza: in asta contano i crediti residui.")
+    return 0
+
+
+def cmd_lineup(args, cfg) -> int:
+    from .fanta.formation import best_formation, build_formation
+    from .fanta.listone import load_listone
+
+    listone = load_listone(cfg.get("fanta.listone_path"))
+    if not listone:
+        print("Serve il listone caricato: vedi data/README.md", file=sys.stderr)
+        return 1
+
+    players, missing = [], []
+    for name in args.players:
+        found = listone.search(name, limit=1)
+        (players.append(found[0][0]) if found else missing.append(name))
+    if missing:
+        print(f"Non trovati: {', '.join(missing)}", file=sys.stderr)
+    if not players:
+        return 1
+
+    formation = build_formation(players, args.module) if args.module else best_formation(players)
+    if args.json:
+        print(json.dumps(formation.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"Modulo {formation.module} — totale atteso {formation.total:.1f}\n")
+    for score in formation.starters:
+        print(f"  {score.player.role}  {score.player.name:<22} {score.expected:5.2f}")
+    if formation.bench:
+        print("\nPanchina (in ordine):")
+        for score in formation.bench[:6]:
+            print(f"  {score.player.role}  {score.player.name:<22} {score.expected:5.2f}")
+    for warning in formation.warnings:
+        print(f"\n! {warning}")
+    return 0
+
+
+# --------------------------------------------------------------------- parser
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="jarvis",
+        description="Assistente vocale di fantacalcio che risponde solo alla tua voce.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("--config", type=Path, help="file di configurazione aggiuntivo")
+    parser.add_argument("--verbose", "-v", action="store_true", help="log di debug")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("enroll", help="registra la tua voce")
+    p.add_argument("--seconds", type=float, default=5.0, help="durata di ogni frase")
+    p.add_argument("--files", nargs="+", help="usa file audio invece del microfono")
+    p.set_defaults(func=cmd_enroll)
+
+    p = sub.add_parser("cohort", help="registra le voci degli altri")
+    p.add_argument("--files", nargs="+", required=True, help="registrazioni di altre persone")
+    p.set_defaults(func=cmd_cohort)
+
+    p = sub.add_parser("calibrate", help="controlla il profilo e proponi le soglie")
+    p.set_defaults(func=cmd_calibrate)
+
+    p = sub.add_parser("diag", help="verifica sul campo se sente solo te")
+    p.add_argument("--seconds", type=float, default=30.0)
+    p.set_defaults(func=cmd_diag)
+
+    p = sub.add_parser("run", help="avvia la conversazione vocale")
+    p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("chat", help="conversazione da tastiera")
+    p.add_argument("message", nargs="*", help="domanda singola; senza, entra in interattivo")
+    p.set_defaults(func=cmd_chat)
+
+    p = sub.add_parser("devices", help="elenco dei dispositivi audio")
+    p.set_defaults(func=cmd_devices)
+
+    p = sub.add_parser("plan", help="piano d'asta")
+    p.add_argument("--strategy", help="equilibrata | modificatore | tre_top_attacco | centrocampo_forte")
+    p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("lineup", help="formazione")
+    p.add_argument("players", nargs="+", help="nomi dei giocatori disponibili")
+    p.add_argument("--module", help="forza un modulo, es. 3-4-3")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_lineup)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
+    args = build_parser().parse_args(argv)
+    cfg = load_config(args.config)
+    setup_logging("DEBUG" if args.verbose else cfg.get("log.level", "INFO"), cfg.get("log.file"))
+    try:
+        return args.func(args, cfg)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"\nErrore: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
