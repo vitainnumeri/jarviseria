@@ -3,6 +3,8 @@
     jarvis enroll        insegna al sistema la tua voce (da fare per primo)
     jarvis cohort        aggiunge le voci degli ALTRI (opzionale, ma aiuta molto)
     jarvis calibrate     controlla il profilo e propone le soglie
+    jarvis record        registra un file audio (per preparare la prova)
+    jarvis benchmark     LA PROVA: misura quante volte sbaglia, e in che direzione
     jarvis diag          ascolta N secondi e dice, secondo per secondo, se sente te
     jarvis run           avvia la conversazione vocale
     jarvis chat          stessa testa, da tastiera (per provare senza microfono)
@@ -130,6 +132,75 @@ def cmd_calibrate(args, cfg) -> int:
     return 0
 
 
+def cmd_record(args, cfg) -> int:
+    """Registra un file audio: serve a preparare il materiale per `benchmark`."""
+    import soundfile as sf
+
+    from .audio.capture import MicrophoneStream
+
+    sample_rate = int(cfg.get("audio.sample_rate", 16000))
+    mic = MicrophoneStream(sample_rate, int(cfg.get("audio.frame_ms", 20)), cfg.get("audio.input_device"))
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    input(f"Premi INVIO e parla per {args.seconds:.0f} secondi (Ctrl-C per fermarti prima)... ")
+    frames, collected = [], 0.0
+    mic.start()
+    try:
+        while collected < args.seconds:
+            frame = mic.read(timeout=0.5)
+            if frame is None:
+                continue
+            frames.append(frame)
+            collected += frame.size / sample_rate
+            print(f"\r  {collected:5.1f}s / {args.seconds:.0f}s", end="", flush=True)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        mic.stop()
+
+    if not frames:
+        print("\nNessun audio registrato.", file=sys.stderr)
+        return 1
+
+    import numpy as np
+
+    audio = np.concatenate(frames)
+    sf.write(str(out), audio, sample_rate)
+    print(f"\n\nSalvato: {out}  ({audio.size / sample_rate:.1f}s)")
+
+    from .speaker.enroll import _quality_warning
+
+    avviso = _quality_warning(audio)
+    if avviso:
+        print(f"Attenzione: {avviso}")
+    return 0
+
+
+def cmd_benchmark(args, cfg) -> int:
+    """La prova vera: quante volte sbaglia, e in che direzione.
+
+    Non basta "sembra funzionare": servono due numeri, e uno dei due (i falsi
+    accessi) deve essere zero.
+    """
+    import json as _json
+
+    from .speaker.benchmark import format_report, run_benchmark
+
+    _, verifier = _build_verifier(cfg)
+    print(f"Valuto {len(args.mine)} registrazioni tue e {len(args.others)} di altri...")
+    print(f"Configurazione: soglia {verifier.cfg.accept_threshold}, "
+          f"margine {verifier.cfg.reject_margin}, coorte {verifier.cohort.size} voci\n")
+
+    result = run_benchmark(verifier, args.mine, args.others, turn_seconds=args.turn_seconds)
+    if args.json:
+        print(_json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_report(result))
+    # Esce con 1 se un estraneo e' passato: cosi' si puo' usare in uno script.
+    return 0 if result.far <= 0.0 else 1
+
+
 def cmd_diag(args, cfg) -> int:
     """Ascolta per N secondi e riporta, finestra per finestra, chi sente.
 
@@ -153,6 +224,7 @@ def cmd_diag(args, cfg) -> int:
     print("-" * 52)
 
     mic.start()
+    raccolte: list = []
     buffer = np.zeros(0, dtype=np.float32)
     window = int(verifier.cfg.window_sec * sample_rate)
     hop = int(verifier.cfg.hop_sec * sample_rate)
@@ -169,6 +241,7 @@ def cmd_diag(args, cfg) -> int:
             buffer = np.concatenate([buffer, frame])
             while buffer.size >= window:
                 score = verifier.score_window(buffer[:window], index)
+                raccolte.append(score)
                 buffer = buffer[hop:]
                 index += 1
                 esito = {"owner": "SEI TU", "stranger": "altra voce", "uncertain": "incerto"}[
@@ -183,11 +256,25 @@ def cmd_diag(args, cfg) -> int:
     finally:
         mic.stop()
 
-    print(f"\nRumore di fondo stimato: {verifier.noise.value_db:.1f} dB")
-    print(f"Soglia in uso: {verifier.cfg.accept_threshold} (margine richiesto {verifier.cfg.reject_margin})")
-    print("\nSe le tue finestre non superano la soglia: avvicina il microfono o abbassa")
-    print("accept_threshold. Se passano voci altrui: alza la soglia e registra la coorte")
-    print("con  jarvis cohort --files <registrazioni delle altre persone>.")
+    tue = [s for s in raccolte if s.decision.value == "owner"]
+    altre = [s for s in raccolte if s.decision.value == "stranger"]
+    print("\n" + "-" * 52)
+    print(f"Finestre analizzate    : {len(raccolte)}")
+    print(f"  attribuite a te      : {len(tue)}")
+    print(f"  attribuite ad altri  : {len(altre)}")
+    if tue:
+        print(f"Punteggio mediano tuo  : {float(np.median([s.owner_score for s in tue])):.3f}")
+    if altre:
+        print(f"Punteggio mediano altri: {float(np.median([s.owner_score for s in altre])):.3f}")
+    print(f"Rumore di fondo stimato: {verifier.noise.value_db:.1f} dB")
+    print(f"Soglia in uso          : {verifier.cfg.accept_threshold} "
+          f"(margine {verifier.cfg.reject_margin})")
+
+    print("\nQuesto e' un monitor, non una misura: dice cosa sta succedendo adesso,")
+    print("non quante volte sbaglia. Per il verdetto con i numeri:")
+    print("\n  jarvis record --out mie/1.wav --seconds 60      (tu che parli)")
+    print("  jarvis record --out altri/1.wav --seconds 60    (un'altra persona)")
+    print("  jarvis benchmark --mine mie/*.wav --others altri/*.wav")
     return 0
 
 
@@ -324,7 +411,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("calibrate", help="controlla il profilo e proponi le soglie")
     p.set_defaults(func=cmd_calibrate)
 
-    p = sub.add_parser("diag", help="verifica sul campo se sente solo te")
+    p = sub.add_parser("record", help="registra un file audio per la prova")
+    p.add_argument("--out", required=True, help="file WAV da creare")
+    p.add_argument("--seconds", type=float, default=60.0)
+    p.set_defaults(func=cmd_record)
+
+    p = sub.add_parser("benchmark", help="LA PROVA: misura falsi accessi e falsi rifiuti")
+    p.add_argument("--mine", nargs="+", required=True, help="registrazioni della TUA voce")
+    p.add_argument("--others", nargs="+", required=True, help="registrazioni di ALTRE persone")
+    p.add_argument("--turn-seconds", type=float, default=4.0, help="durata di un turno simulato")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_benchmark)
+
+    p = sub.add_parser("diag", help="monitor dal vivo: chi sto sentendo adesso")
     p.add_argument("--seconds", type=float, default=30.0)
     p.set_defaults(func=cmd_diag)
 

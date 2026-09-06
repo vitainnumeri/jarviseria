@@ -151,14 +151,18 @@ Ti dice quante impronte hai, quanto sono coerenti fra loro e quali soglie usare.
 Sotto 0.55 di coerenza qualcosa e' andato storto (rumore, o qualcun altro ha
 letto una frase): rifai.
 
-### 4. Provalo **nella stanza vera**
+### 4. Verifica che senta davvero solo te
+
+Questa e' la parte che decide se il progetto vale qualcosa, quindi ha due
+strumenti distinti: uno per **guardare**, uno per **misurare**.
+
+#### `jarvis diag` — guardare
 
 ```bash
 jarvis diag --seconds 60
 ```
 
-Questo e' il comando che conta. Ascolta per un minuto e stampa, secondo per
-secondo, chi sta sentendo:
+Ascolta e stampa, finestra per finestra, chi sta sentendo:
 
 ```
      t      io   altri   margine       dB  esito
@@ -169,9 +173,99 @@ secondo, chi sta sentendo:
    8.0   0.187   0.402    -0.215    -33.9  altra voce
 ```
 
-Fallo **nel posto in cui userai il bot**, con il rumore e le persone di quel
-posto. E' l'unico modo onesto di sapere se funziona: le soglie di default sono
-un punto di partenza, non una promessa.
+Serve a capire *cosa sta succedendo*: se i tuoi punteggi sono bassi, se il
+rumore di fondo e' stimato bene, se un certo tipo di voce si avvicina alla
+soglia. E' un monitor, non un giudizio.
+
+#### `jarvis benchmark` — misurare
+
+Guardare righe che scorrono non e' una misura. Il verdetto vero conta due
+errori, che **non pesano uguale**:
+
+| Errore | Cosa succede | Quanto e' grave |
+|---|---|---|
+| **Falso rifiuto** | Parli tu e non ti sente | Fastidioso: ripeti la frase |
+| **Falso accesso** | Parla un altro e gli risponde | Grave: e' esattamente cio' che non deve succedere |
+
+Quindi il criterio **non** e' "pochi errori in totale", ma **zero falsi accessi,
+falsi rifiuti pochi**. Un sistema che ti fa ripetere una frase su dieci ma non
+apre mai a un estraneo e' buono. Uno che non ti fa mai ripetere ma risponde a un
+collega su venti e' inutilizzabile.
+
+**Prepara il materiale** (bastano un paio di minuti a testa):
+
+```bash
+mkdir -p prova/mie prova/altri
+
+# La tua voce, parlando normalmente di quello di cui parlerai davvero
+jarvis record --out prova/mie/1.wav --seconds 60
+jarvis record --out prova/mie/2.wav --seconds 60      # un'altra volta, altro momento
+
+# Altre persone, una per file, nella stessa stanza e alla stessa distanza
+jarvis record --out prova/altri/marco.wav --seconds 60
+jarvis record --out prova/altri/luca.wav  --seconds 60
+jarvis record --out prova/altri/anna.wav  --seconds 60
+```
+
+**Fai la misura:**
+
+```bash
+jarvis benchmark --mine prova/mie/*.wav --others prova/altri/*.wav
+```
+
+```
+==============================================================
+  BUONO: nessun estraneo e' passato, ogni tanto devi ripetere
+==============================================================
+
+  Falsi accessi (parla un altro, risponde) :   0.0%   <- deve essere 0%
+  Falsi rifiuti (parli tu, non ti sente)   :   6.7%   <- sotto il 15% va bene
+
+  Separazione fra te e gli altri           : +0.312   <- sopra 0.15 e' solida
+  Equal Error Rate                         :   1.4%
+
+  Tue registrazioni  :  28/30  turni riconosciuti  (punteggio mediano 0.781)
+  Voci altrui        :   0/45  turni passati       (punteggio mediano 0.194)
+
+  Soglia suggerita da queste registrazioni, per config/local.yaml:
+
+    speaker:
+      accept_threshold: 0.58
+
+  Cosa fare adesso:
+    - Per farti ripetere di meno abbassa accept_threshold di 0.03 alla volta
+      e rifai questa prova: fermati appena un estraneo passa.
+```
+
+Esce con codice 1 se anche un solo estraneo passa, cosi' puoi metterlo in uno
+script e rifarlo dopo ogni modifica alle soglie.
+
+#### Le tre prove che contano davvero
+
+Nell'ordine, dalla piu' facile alla piu' cattiva:
+
+1. **Solo tu, stanza silenziosa.** Se qui i falsi rifiuti non sono sotto il 10%,
+   il problema e' l'arruolamento o il microfono: non andare avanti, rifai
+   `jarvis enroll`.
+2. **Altre persone, stessa stanza, stessa distanza dal microfono.** E' la prova
+   realistica. I falsi accessi devono essere zero.
+3. **La prova cattiva.** Fai dire agli altri *le tue stesse frasi*, con il tuo
+   tono, il piu' vicino possibile al microfono. Qualcuno che ti imita di
+   proposito. Se regge questa, regge la sala d'asta.
+
+Poi rifalla **nel posto vero**, con il rumore vero. Le soglie di default sono un
+punto di partenza, non una promessa: l'unico numero che conta e' quello che
+misuri tu, dove lo userai.
+
+#### Due errori che falsano la misura
+
+- **Non usare per la prova le stesse registrazioni con cui hai costruito la
+  coorte.** Il sistema le conosce gia': i falsi accessi verrebbero zero per
+  costruzione, e il numero mentirebbe.
+- **Non registrare gli altri piu' lontano di come parlerebbero davvero.** Se li
+  registri a due metri e loro poi si sporgono verso il microfono, hai misurato
+  una situazione piu' facile di quella reale.
+
 
 ### 5. Carica il listone
 
@@ -196,7 +290,9 @@ jarvis run
 jarvis enroll        registra la tua voce (il primo passo)
 jarvis cohort        aggiunge le voci degli altri (opzionale, aiuta parecchio)
 jarvis calibrate     controlla il profilo e propone le soglie
-jarvis diag          ascolta N secondi e dice, finestra per finestra, chi sente
+jarvis record        registra un file audio (per preparare la prova)
+jarvis benchmark     LA PROVA: misura falsi accessi e falsi rifiuti
+jarvis diag          monitor dal vivo: chi sto sentendo adesso
 jarvis run           avvia la conversazione vocale
 jarvis chat          stessa testa, da tastiera (per provare senza microfono)
 jarvis devices       elenco dei dispositivi audio
@@ -377,7 +473,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-191 test, 82% di copertura, e nessuno di essi richiede microfono, modelli o
+216 test, 81% di copertura, e nessuno di essi richiede microfono, modelli o
 rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
 
 Il test che conta e' `test_session.py::test_stanza_affollata_una_sola_risposta`:

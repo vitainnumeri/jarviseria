@@ -73,3 +73,77 @@ def test_profilo_mancante_spiega_cosa_fare(capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("JARVIS_PROFILE", str(tmp_path / "assente.npz"))
     assert main(["calibrate"]) == 1
     assert "jarvis enroll" in capsys.readouterr().err
+
+
+def test_i_comandi_di_prova_esistono():
+    parser = build_parser()
+    args = parser.parse_args(["benchmark", "--mine", "a.wav", "--others", "b.wav"])
+    assert callable(args.func)
+    assert args.mine == ["a.wav"] and args.others == ["b.wav"]
+
+    args = parser.parse_args(["record", "--out", "x.wav", "--seconds", "30"])
+    assert args.out == "x.wav" and args.seconds == 30.0
+
+
+def test_benchmark_esce_con_errore_se_un_estraneo_passa(monkeypatch, tmp_path, capsys):
+    """Il codice d'uscita serve a poterlo mettere in uno script."""
+    from conftest import FakeEmbedder, speech
+    from jarvis.cli import cmd_benchmark
+    from jarvis.config import load_config
+    from jarvis.speaker import benchmark as bm
+    from jarvis.speaker.profile import Cohort, VoiceProfile
+    from jarvis.speaker.verifier import SpeakerVerifier, VerifierConfig
+
+    embedder = FakeEmbedder()
+    profile = VoiceProfile(name="io")
+    for i in range(6):
+        profile.add(embedder.embed(speech(0, 4.0 + i * 0.3)))
+
+    # Soglia volutamente permissiva: passano tutti, quindi il verdetto e' negativo.
+    verifier = SpeakerVerifier(
+        embedder, profile,
+        VerifierConfig(accept_threshold=-1.0, reject_margin=-1.0, near_field_enabled=False),
+        Cohort(),
+    )
+    monkeypatch.setattr("jarvis.cli._build_verifier", lambda cfg, **kw: (embedder, verifier))
+    monkeypatch.setattr(bm, "load_audio", lambda path, rate=16000: speech(int(str(path)[-5]), 20.0))
+
+    class Args:
+        mine = [str(tmp_path / "v_0.wav")]
+        others = [str(tmp_path / "v_3.wav")]
+        turn_seconds = 4.0
+        json = False
+
+    assert cmd_benchmark(Args(), load_config()) == 1
+    assert "NON AFFIDABILE" in capsys.readouterr().out
+
+
+def test_benchmark_esce_a_zero_se_nessun_estraneo_passa(monkeypatch, tmp_path, capsys):
+    from conftest import FakeEmbedder, speech
+    from jarvis.cli import cmd_benchmark
+    from jarvis.config import load_config
+    from jarvis.speaker import benchmark as bm
+    from jarvis.speaker.profile import Cohort, VoiceProfile
+    from jarvis.speaker.verifier import SpeakerVerifier, VerifierConfig
+
+    embedder = FakeEmbedder()
+    profile = VoiceProfile(name="io")
+    for i in range(6):
+        profile.add(embedder.embed(speech(0, 4.0 + i * 0.3)))
+
+    verifier = SpeakerVerifier(
+        embedder, profile,
+        VerifierConfig(accept_threshold=0.62, near_field_enabled=False),
+        Cohort(),
+    )
+    monkeypatch.setattr("jarvis.cli._build_verifier", lambda cfg, **kw: (embedder, verifier))
+    monkeypatch.setattr(bm, "load_audio", lambda path, rate=16000: speech(int(str(path)[-5]), 20.0))
+
+    class Args:
+        mine = [str(tmp_path / "v_0.wav")]
+        others = [str(tmp_path / "v_3.wav")]
+        turn_seconds = 4.0
+        json = False
+
+    assert cmd_benchmark(Args(), load_config()) == 0
+    assert "AFFIDABILE" in capsys.readouterr().out
