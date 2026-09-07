@@ -1,0 +1,215 @@
+:root {
+  --bg: #0e1116; --pannello: #171c24; --linea: #262d38; --linea-chiara: #323b48;
+  --testo: #e8ecf2; --tenue: #8b96a5;
+  --alto: #4a9eff; --basso: #ff8a3d;
+  --ok: #35c07a; --rosso: #e05a5a; --oro: #f0c04a;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--testo);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+h1, h2, h3 { margin: 0; font-weight: 620; letter-spacing: -0.01em; }
+
+header {
+  padding: calc(12px + var(--safe-t)) 18px 12px;
+  border-bottom: 1px solid var(--linea);
+  display: flex; align-items: center; gap: 12px; flex: none;
+}
+header h1 { font-size: 17px; }
+.conta { margin-left: auto; color: var(--tenue); font-size: 13px; font-variant-numeric: tabular-nums; }
+.conta + .icona { margin-left: 0; }
+.icona {
+  margin-left: auto; background: none; border: none; color: var(--tenue);
+  font-size: 20px; padding: 4px 8px; cursor: pointer; line-height: 1;
+}
+.icona:disabled { opacity: .3; cursor: default; }
+
+.schermata {
+  flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+  padding: 20px 18px calc(18px + var(--safe-b)); gap: 18px;
+}
+.schermata.centrata { justify-content: center; text-align: center; }
+.nascosta { display: none !important; }
+
+/* ------------------------------------------------------------ testi comuni */
+.occhiello { color: var(--alto); font-size: 13px; font-weight: 600;
+             text-transform: uppercase; letter-spacing: .07em; margin: 0 0 6px; }
+.intro h2 { font-size: 27px; line-height: 1.2; }
+.sottotitolo { color: var(--tenue); margin: 10px 0 0; font-size: 15px; }
+.titolo-sezione { font-size: 20px; }
+.nota { color: var(--tenue); font-size: 13.5px; margin: 0; }
+.etichetta { display: block; font-size: 13px; font-weight: 600; color: var(--tenue);
+             text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.errore { color: var(--rosso); font-size: 14px; margin: 0; }
+.blocco { display: flex; flex-direction: column; gap: 10px; }
+.riga-titolo { display: flex; align-items: center; gap: 10px; }
+.pillola {
+  margin-left: auto; flex: none; font-size: 12.5px; color: var(--tenue);
+  background: var(--pannello); border: 1px solid var(--linea);
+  border-radius: 999px; padding: 4px 11px; font-variant-numeric: tabular-nums;
+}
+blockquote {
+  margin: 0; padding: 14px 16px; background: var(--pannello);
+  border: 1px solid var(--linea); border-left: 3px solid var(--alto);
+  border-radius: 12px; font-size: 17px; line-height: 1.4;
+}
+
+/* ------------------------------------------------------------------ passi */
+.passi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.passo {
+  display: flex; gap: 14px; align-items: flex-start; padding: 15px 16px;
+  background: var(--pannello); border: 1px solid var(--linea); border-radius: 14px;
+}
+.passo-num {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: 700;
+  display: grid; place-items: center; background: var(--linea-chiara); color: var(--tenue);
+}
+.passo-testo { flex: 1; min-width: 0; }
+.passo-titolo { font-weight: 600; font-size: 15px; }
+.passo-nota { color: var(--tenue); font-size: 13.5px; margin-top: 3px; }
+.passo-nota em { color: var(--testo); font-style: normal; }
+
+/* ------------------------------------------------------------------ campi */
+input[type="text"] {
+  width: 100%; padding: 13px 14px; font-size: 16px; color: var(--testo);
+  background: var(--pannello); border: 1px solid var(--linea-chiara); border-radius: 12px;
+}
+input[type="text"]:focus { outline: none; border-color: var(--alto); }
+input[type="text"]::placeholder { color: #5d6673; }
+
+.lista-nomi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+              counter-reset: giocatore; }
+.riga-nome { display: flex; align-items: center; gap: 8px; }
+.riga-nome::before {
+  counter-increment: giocatore; content: counter(giocatore);
+  flex: none; width: 24px; text-align: center; color: var(--tenue);
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.riga-nome input { flex: 1; min-width: 0; }
+
+.scelte { display: flex; gap: 8px; }
+.scelta {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 12px 8px;
+  background: var(--pannello); border: 1px solid var(--linea); border-radius: 12px;
+  color: var(--testo); font: inherit; cursor: pointer; text-align: center;
+}
+.scelta small { color: var(--tenue); font-size: 12.5px; }
+.scelta.attiva { border-color: var(--alto); background: rgba(74,158,255,.12); }
+
+button.principale, button.secondario {
+  width: 100%; padding: 16px; font: inherit; font-weight: 640; font-size: 16.5px;
+  border-radius: 14px; cursor: pointer; flex: none;
+}
+button.principale { background: var(--alto); color: #06121f; border: none; }
+button.principale:disabled { background: var(--linea-chiara); color: var(--tenue); cursor: default; }
+button.secondario { background: none; color: var(--tenue); border: 1px solid var(--linea-chiara); }
+button:active:not(:disabled) { transform: scale(.99); }
+
+/* -------------------------------------------------------------- passaggio */
+.passaggio { margin-bottom: 6px; }
+.passaggio h2 { font-size: 34px; line-height: 1.15; margin: 4px 0; word-break: break-word; }
+.schermata.centrata .sottotitolo { max-width: 30ch; margin: 10px auto 0; }
+
+/* ------------------------------------------------------------------ scala */
+.porta-scala { position: relative; flex: 1 1 auto; min-height: 260px; display: flex; }
+.ospite { flex: 1; min-width: 0; display: flex; }
+.scala { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.estremo {
+  flex: none; text-align: center; font-size: 17px; font-weight: 640; padding: 6px 4px;
+  border-radius: 10px; background: var(--pannello); border: 1px solid var(--linea);
+}
+.estremo.alto { color: var(--alto); }
+.estremo.basso { color: var(--basso); }
+
+.pista-zona { position: relative; flex: 1 1 auto; min-height: 170px; display: flex; }
+.pista {
+  position: relative; flex: 1; border-radius: 16px;
+  border: 1px solid var(--linea-chiara); overflow: hidden; touch-action: none;
+  background:
+    linear-gradient(180deg, rgba(74,158,255,.30), rgba(74,158,255,.05) 42%,
+                    rgba(255,138,61,.05) 58%, rgba(255,138,61,.30)),
+    var(--pannello);
+}
+.pista.viva { cursor: pointer; }
+.pista.viva:focus-visible { outline: 2px solid var(--alto); outline-offset: 2px; }
+.pista.in-mano { border-color: var(--alto); }
+.pista.spenta { cursor: default; }
+
+.tacche, .segni { position: absolute; inset: 0; pointer-events: none; }
+.tacca { position: absolute; left: 0; right: 0; height: 1px; background: rgba(232,236,242,.10); }
+.tacca:nth-child(5) { background: rgba(232,236,242,.22); }
+
+.segno { position: absolute; left: 0; right: 0; height: 0; }
+.filo-segno { position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: currentColor; z-index: 1; }
+/* Le targhette stanno sopra ogni riga: con sei tiri ravvicinati le righe
+   altrimenti passano in mezzo alle scritte. */
+.targhetta {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  font-size: 12.5px; font-weight: 700; line-height: 1;
+  padding: 5px 9px; border-radius: 999px; background: var(--bg); color: currentColor;
+  border: 1.5px solid currentColor; white-space: nowrap;
+}
+.segno.a-destra .targhetta { right: 8px; }
+.segno.a-sinistra .targhetta { left: 8px; }
+.segni.folto .targhetta { font-size: 11px; padding: 3px 7px; }
+.segno.tiro { color: var(--testo); }
+.segno.bersaglio { color: var(--ok); }
+.segno.bersaglio .filo-segno { top: -2px; height: 4px; box-shadow: 0 0 10px rgba(53,192,122,.45); }
+.segno.bersaglio .targhetta { background: var(--ok); color: #08170f; border-color: var(--ok); }
+
+.maniglia { position: absolute; left: 0; right: 0; height: 0; color: var(--testo); }
+.maniglia .filo { position: absolute; left: 0; right: 0; top: -1.5px; height: 3px; background: var(--testo); }
+.maniglia .pomello {
+  position: absolute; left: 50%; top: 0; width: 30px; height: 30px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: var(--testo);
+  box-shadow: 0 3px 12px rgba(0,0,0,.55);
+}
+.pista.in-mano .maniglia .pomello { transform: translate(-50%, -50%) scale(1.15); }
+
+/* Il velo sul bersaglio: si alza solo finche' si tiene premuto. */
+.velo {
+  position: absolute; inset: 0; border: 1px solid var(--linea-chiara); border-radius: 16px;
+  background: rgba(23,28,36,.97); color: var(--tenue); font: inherit; cursor: pointer;
+  display: grid; place-items: center; transition: opacity .12s;
+}
+.velo-testo { font-size: 17px; font-weight: 620; color: var(--testo); }
+.velo-testo small { font-size: 13.5px; font-weight: 400; color: var(--tenue); }
+.velo.alzato { opacity: 0; }
+
+/* ------------------------------------------------------------------ esiti */
+.esiti { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.esito {
+  display: flex; align-items: baseline; gap: 10px; padding: 11px 14px;
+  background: var(--pannello); border: 1px solid var(--linea); border-radius: 12px;
+}
+.esito-nome { font-weight: 620; }
+.esito-nota { color: var(--tenue); font-size: 12.5px; }
+.esito-punti { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ok); }
+.esito.zero .esito-punti { color: var(--tenue); }
+.esito-indizio { border-color: rgba(74,158,255,.35); }
+.esito-indizio .esito-punti { color: var(--alto); }
+
+/* -------------------------------------------------------------- tabellone */
+.tabellone { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.riga-tabellone {
+  display: flex; align-items: center; gap: 12px; padding: 13px 15px;
+  background: var(--pannello); border: 1px solid var(--linea); border-radius: 12px;
+}
+.riga-tabellone .posto { width: 22px; color: var(--tenue); font-variant-numeric: tabular-nums; }
+.riga-tabellone .nome { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.riga-tabellone .punti { font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.riga-tabellone.primo { border-color: rgba(240,192,74,.45); }
+.riga-tabellone.primo .posto, .riga-tabellone.primo .punti { color: var(--oro); }
+
+@media (min-width: 620px) {
+  .schermata { max-width: 560px; width: 100%; margin: 0 auto; }
+  header { max-width: 560px; width: 100%; margin: 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Via di mezzo",
+  "short_name": "Via di mezzo",
+  "description": "Gioco di gruppo da passarsi al telefono: trovare il punto in mezzo fra due estremi.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1116'/%3E%3Crect x='27' y='10' width='10' height='44' rx='5' fill='%234a9eff'/%3E%3Crect x='19' y='29' width='26' height='6' rx='3' fill='%23e8ecf2'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

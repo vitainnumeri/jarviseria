@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="description" content="Gioco di gruppo da passarsi al telefono: uno vede un punto segreto fra due estremi, gli altri devono ritrovarlo.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1116'/%3E%3Crect x='27' y='10' width='10' height='44' rx='5' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%234a9eff'/%3E%3Cstop offset='1' stop-color='%23ff8a3d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='19' y='29' width='26' height='6' rx='3' fill='%23e8ecf2'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Via di mezzo</title>
+<link rel="stylesheet" href="stile.css">
+</head>
+<body>
+
+<header>
+  <h1>Via di mezzo</h1>
+  <span id="conta-round" class="conta nascosta"></span>
+  <button id="apri-menu" class="icona nascosta" aria-label="Menu partita">&#9776;</button>
+</header>
+
+<!-- ============================== SETUP ============================== -->
+<section id="schermata-setup" class="schermata">
+  <div class="intro">
+    <p class="occhiello">Da 3 a 12 giocatori &middot; un telefono solo</p>
+    <h2>Quanto ci sta in mezzo?</h2>
+    <p class="sottotitolo">Uno vede un punto segreto fra due estremi e cerca la parola giusta.
+      Gli altri, a turno, provano a ritrovare quel punto.</p>
+  </div>
+
+  <ol class="passi">
+    <li class="passo"><span class="passo-num">1</span><div class="passo-testo">
+      <div class="passo-titolo">Chi dà l&rsquo;indizio guarda</div>
+      <div class="passo-nota">Vede la scala &mdash; per esempio <em>Buono</em> in cima e
+        <em>Cattivo</em> in fondo &mdash; e il punto segreto. Dice a voce una parola o una frase
+        che secondo lui sta esattamente lì.</div></div></li>
+    <li class="passo"><span class="passo-num">2</span><div class="passo-testo">
+      <div class="passo-titolo">Il telefono gira</div>
+      <div class="passo-nota">Ognuno degli altri segna dove crede che sia il punto. Non vede
+        né il bersaglio né i tiri di chi lo ha preceduto.</div></div></li>
+    <li class="passo"><span class="passo-num">3</span><div class="passo-testo">
+      <div class="passo-titolo">Si scopre tutto</div>
+      <div class="passo-nota">Più sei vicino, più punti prendi. Chi ha dato l&rsquo;indizio prende
+        la media di quelli che lo hanno ascoltato: conviene farsi capire.</div></div></li>
+  </ol>
+
+  <div class="blocco">
+    <h3 class="titolo-sezione">Giocatori</h3>
+    <p class="nota">Nell&rsquo;ordine in cui siete seduti: il telefono passerà così.</p>
+    <ol id="lista-nomi" class="lista-nomi"></ol>
+    <button id="aggiungi-giocatore" class="secondario">+ Aggiungi giocatore</button>
+  </div>
+
+  <div class="blocco">
+    <h3 class="titolo-sezione">Durata</h3>
+    <p class="nota">Quante volte ciascuno dà l&rsquo;indizio.</p>
+    <div id="scelta-giri" class="scelte" role="radiogroup" aria-label="Durata della partita"></div>
+  </div>
+
+  <p id="errore-setup" class="errore nascosta" role="alert"></p>
+  <button id="avvia" class="principale">Si comincia</button>
+</section>
+
+<!-- ============================ PASSAGGIO ============================ -->
+<section id="schermata-passaggio" class="schermata centrata nascosta">
+  <div class="passaggio">
+    <p class="occhiello" id="passaggio-ruolo"></p>
+    <h2 id="passaggio-nome"></h2>
+    <p class="sottotitolo" id="passaggio-nota"></p>
+  </div>
+  <button id="prendi-telefono" class="principale">Ci sono, tocca a me</button>
+</section>
+
+<!-- ============================= INDIZIO ============================= -->
+<section id="schermata-indizio" class="schermata nascosta">
+  <div class="riga-titolo">
+    <h2 class="titolo-sezione">Il tuo bersaglio</h2>
+    <span class="pillola" id="indizio-chi"></span>
+  </div>
+  <p class="nota">Tieni premuto per scoprirlo, e non farlo vedere a nessuno.</p>
+
+  <div class="porta-scala">
+    <div id="scala-indizio" class="ospite"></div>
+    <button id="scopri" class="velo">
+      <span class="velo-testo">Tieni premuto<br><small>per vedere il bersaglio</small></span>
+    </button>
+  </div>
+
+  <div class="blocco">
+    <label class="etichetta" for="testo-indizio">La tua parola o frase</label>
+    <input id="testo-indizio" type="text" maxlength="80" autocomplete="off"
+           placeholder="Dilla a voce e scrivila qui" enterkeyhint="done">
+    <p class="nota">Resta scritta sullo schermo mentre gli altri tirano.</p>
+  </div>
+
+  <p id="errore-indizio" class="errore nascosta" role="alert"></p>
+  <button id="conferma-indizio" class="principale">L&rsquo;ho detta, passo il telefono</button>
+</section>
+
+<!-- ============================== TIRO =============================== -->
+<section id="schermata-tiro" class="schermata nascosta">
+  <div class="riga-titolo">
+    <h2 class="titolo-sezione" id="tiro-chi"></h2>
+    <span class="pillola" id="tiro-progresso"></span>
+  </div>
+  <blockquote id="tiro-indizio"></blockquote>
+
+  <div class="porta-scala">
+    <div id="scala-tiro" class="ospite"></div>
+  </div>
+
+  <p class="nota">Tocca o trascina sulla scala.</p>
+  <button id="conferma-tiro" class="principale" disabled>Segna qui</button>
+</section>
+
+<!-- =========================== RIVELAZIONE =========================== -->
+<section id="schermata-rivelazione" class="schermata nascosta">
+  <div class="riga-titolo">
+    <h2 class="titolo-sezione">Il bersaglio era qui</h2>
+  </div>
+  <blockquote id="rivelazione-indizio"></blockquote>
+
+  <div class="porta-scala">
+    <div id="scala-rivelazione" class="ospite"></div>
+  </div>
+
+  <ul id="esiti" class="esiti"></ul>
+  <button id="vai-classifica" class="principale">Classifica</button>
+</section>
+
+<!-- ============================ CLASSIFICA =========================== -->
+<section id="schermata-classifica" class="schermata nascosta">
+  <div class="riga-titolo">
+    <h2 class="titolo-sezione">Classifica</h2>
+  </div>
+  <ol id="tabellone" class="tabellone"></ol>
+  <button id="prossimo-round" class="principale">Prossimo round</button>
+</section>
+
+<!-- =============================== FINE ============================== -->
+<section id="schermata-fine" class="schermata nascosta">
+  <div class="intro">
+    <p class="occhiello">Partita finita</p>
+    <h2 id="vincitore"></h2>
+  </div>
+  <ol id="tabellone-finale" class="tabellone"></ol>
+  <button id="rivincita" class="principale">Rivincita, stessi giocatori</button>
+  <button id="da-capo" class="secondario">Cambia giocatori</button>
+</section>
+
+<script type="module" src="js/ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "via-di-mezzo",
+  "version": "1.0.0",
+  "description": "Gioco da tavolo per telefono: trovare la via di mezzo fra due estremi.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
