@@ -147,3 +147,31 @@ def test_benchmark_esce_a_zero_se_nessun_estraneo_passa(monkeypatch, tmp_path, c
 
     assert cmd_benchmark(Args(), load_config()) == 0
     assert "AFFIDABILE" in capsys.readouterr().out
+
+
+def test_doctor_esiste_e_riporta_cosa_manca(capsys, monkeypatch, tmp_path):
+    monkeypatch.setenv("JARVIS_PROFILE", str(tmp_path / "assente.npz"))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert main(["doctor"]) == 1
+    output = capsys.readouterr().out
+    assert "Controllo prerequisiti" in output
+    assert "jarvis enroll" in output
+
+
+def test_doctor_in_json(capsys, monkeypatch, tmp_path):
+    import json
+
+    monkeypatch.setenv("JARVIS_PROFILE", str(tmp_path / "assente.npz"))
+    main(["doctor", "--json"])
+    dati = json.loads(capsys.readouterr().out)
+    assert any(c["controllo"] == "Profilo vocale" and c["stato"] == "manca" for c in dati)
+
+
+def test_serve_non_parte_senza_prerequisiti_e_spiega_tutto(capsys, monkeypatch, tmp_path):
+    """Il problema che ha fatto nascere doctor: morire al primo errore."""
+    monkeypatch.setenv("JARVIS_PROFILE", str(tmp_path / "assente.npz"))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert main(["serve"]) == 1
+    errore = capsys.readouterr().err
+    assert "Controllo prerequisiti" in errore
+    assert "jarvis doctor" in errore

@@ -1,5 +1,6 @@
 """Interfaccia a riga di comando.
 
+    jarvis doctor        controlla cosa manca per partire (se sei bloccato, parti da qui)
     jarvis enroll        insegna al sistema la tua voce (da fare per primo)
     jarvis cohort        aggiunge le voci degli ALTRI (opzionale, ma aiuta molto)
     jarvis calibrate     controlla il profilo e propone le soglie
@@ -70,6 +71,41 @@ def _build_verifier(cfg, *, require_profile: bool = True):
 
 
 # ------------------------------------------------------------------- comandi
+def _prerequisiti_ok(cfg, *, modalita: str, porta: int = 8765) -> bool:
+    """Controlla i prerequisiti prima di avviare, e in caso spiega tutto.
+
+    Senza questo, il primo pezzo mancante fa uscire con un errore solo e chi e'
+    bloccato non sa quanti altri ce ne siano dietro.
+    """
+    from .diagnostics import exit_code, format_report, run_checks
+
+    checks = run_checks(cfg, porta=porta, modalita=modalita)
+    if exit_code(checks) == 0:
+        return True
+    print(format_report(checks, modalita), file=sys.stderr)
+    print("  Quando hai sistemato, rilancia. Per ricontrollare:  jarvis doctor\n",
+          file=sys.stderr)
+    return False
+
+
+def cmd_doctor(args, cfg) -> int:
+    """Controlla tutti i prerequisiti in una volta e dice cosa fare.
+
+    Esiste perche' i comandi si fermano al primo pezzo mancante, e chi e'
+    bloccato ha bisogno dell'elenco completo, non del primo errore.
+    """
+    import json as _json
+
+    from .diagnostics import exit_code, format_report, run_checks
+
+    checks = run_checks(cfg, porta=args.port, modalita=args.mode)
+    if args.json:
+        print(_json.dumps([c.to_dict() for c in checks], ensure_ascii=False, indent=2))
+    else:
+        print(format_report(checks, args.mode))
+    return exit_code(checks)
+
+
 def cmd_enroll(args, cfg) -> int:
     from .speaker.embedder import build_embedder
     from .speaker.enroll import enroll_from_files, enroll_interactive
@@ -288,6 +324,9 @@ def cmd_run(args, cfg) -> int:
     from .session.orchestrator import VoiceSession
     from .tts import build_synthesizer
 
+    if not _prerequisiti_ok(cfg, modalita="pc"):
+        return 1
+
     _, verifier = _build_verifier(cfg)
     listone, _, _, agent = _build_domain(cfg)
     sample_rate = int(cfg.get("audio.sample_rate", 16000))
@@ -328,6 +367,9 @@ def cmd_serve(args, cfg) -> int:
 
     from .web.server import build_server
     from .web.tls import build_ssl_context, local_ip
+
+    if not _prerequisiti_ok(cfg, modalita="telefono", porta=args.port):
+        return 1
 
     server = build_server(cfg)
     ip = args.host if args.host not in (None, "0.0.0.0") else local_ip()
@@ -441,6 +483,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, help="file di configurazione aggiuntivo")
     parser.add_argument("--verbose", "-v", action="store_true", help="log di debug")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("doctor", help="controlla cosa manca per partire")
+    p.add_argument("--mode", choices=["telefono", "pc"], default="telefono",
+                   help="quale modalita' vuoi usare (default: telefono)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("enroll", help="registra la tua voce")
     p.add_argument("--seconds", type=float, default=5.0, help="durata di ogni frase")

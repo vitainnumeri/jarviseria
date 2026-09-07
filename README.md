@@ -115,6 +115,43 @@ cifrato con TLS: non esce da casa e non passa da nessun servizio esterno.
 
 ---
 
+## Se qualcosa non parte: `jarvis doctor`
+
+Prima di ogni altra cosa:
+
+```bash
+jarvis doctor
+```
+
+Controlla **tutti** i prerequisiti in una volta e dice cosa fare, in ordine:
+
+```
+  [ok]  Python 3.10+                         3.11.9
+  [NO]  Riconoscimento voce (speechbrain)    non installato
+  [NO]  Chiave Claude                        ANTHROPIC_API_KEY non impostata
+  [NO]  Profilo vocale                       profiles/owner.npz non esiste
+  [ok]  Porta 8765                           libera
+  [ok]  Rete locale                          https://192.168.1.42:8765  <- questo sul telefono
+
+  Ti mancano 3 passi:
+
+  1. Dipendenze Python (1 pacchetti)
+       pip install -e ".[audio,asr-local,llm,phone]"
+
+  2. Chiave Claude
+       Copia .env.example in .env e mettici la chiave da console.anthropic.com
+
+  3. Profilo vocale
+       jarvis enroll     (ti fa leggere 8 frasi, dura un minuto)
+```
+
+`jarvis serve` e `jarvis run` fanno questo controllo da soli prima di partire,
+quindi non muoiono piu' al primo pezzo mancante lasciandoti indovinare quanti
+altri ce ne fossero dietro.
+
+Usa `jarvis doctor --mode pc` se vuoi usare il microfono del computer invece del
+telefono.
+
 ## Primo avvio
 
 ### 1. Scegli il microfono
@@ -290,6 +327,7 @@ jarvis run
 ## Comandi
 
 ```
+jarvis doctor        controlla cosa manca per partire (se sei bloccato, parti da qui)
 jarvis enroll        registra la tua voce (il primo passo)
 jarvis cohort        aggiunge le voci degli altri (opzionale, aiuta parecchio)
 jarvis calibrate     controlla il profilo e propone le soglie
@@ -387,6 +425,8 @@ meta' nella conversazione. L'assistente ha una sola rosa, un solo budget e un
 solo filo del discorso.
 
 ### Se qualcosa non va
+
+Prima di tutto: `jarvis doctor`. Poi, se il server parte ma il telefono no:
 
 | Sintomo | Causa quasi sempre |
 |---|---|
@@ -567,7 +607,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-237 test, e nessuno di essi richiede microfono, modelli o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
+261 test, e nessuno di essi richiede microfono, modelli o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
 
 Il test che conta e' `test_session.py::test_stanza_affollata_una_sola_risposta`:
 sette persone parlano a turno attraverso la catena completa, ne esce una sola
