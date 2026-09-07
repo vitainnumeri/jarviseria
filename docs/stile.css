@@ -136,7 +136,8 @@ button.stretto { flex: 0 0 auto; padding: 16px 20px; }
 .dettagli summary { cursor: pointer; font-weight: 560; font-size: 15px; }
 .dettagli p { color: var(--tenue); font-size: 13.5px; line-height: 1.6; }
 .dettagli p:last-child { margin-bottom: 0; }
-.versione { color: var(--tenue); font-size: 12px; text-align: center; margin: 0; }
+.versione { color: var(--tenue); font-size: 12px; text-align: center; margin: 0;
+            white-space: pre-line; line-height: 1.6; }
 
 #avvisi:empty { display: none; }
 .avviso {

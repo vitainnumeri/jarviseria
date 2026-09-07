@@ -5,7 +5,7 @@
   "description": "Versione telefono di JarvisEria: gira interamente nel browser.",
   "scripts": {
     "test": "npm run test:logica && npm run test:browser",
-    "test:logica": "node --test tests-web/verifier.test.mjs tests-web/fanta.test.mjs",
+    "test:logica": "node --test tests-web/verifier.test.mjs tests-web/fanta.test.mjs tests-web/cervello.test.mjs",
     "test:browser": "node --test --test-timeout=90000 tests-web/browser.test.mjs"
   },
   "devDependencies": { "playwright": "^1.49.0" }

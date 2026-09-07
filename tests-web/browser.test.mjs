@@ -64,6 +64,25 @@ async function apri(wav) {
   return { browser, pagina, errori };
 }
 
+test('senza chiave l\'app parte lo stesso, in modalita\' gratuita', async () => {
+  const { server, porta } = await avviaServer();
+  const { browser, pagina, errori } = await apri(WAV_IO);
+  try {
+    await pagina.goto(`http://127.0.0.1:${porta}/`, { waitUntil: 'networkidle' });
+    const modalita = await pagina.evaluate(async () => {
+      const { Sessione } = await import('./js/app.js');
+      const s = new Sessione();
+      const r = s.cervello.ascolta('quanto mi resta');
+      return { modalita: s.modalita, haChiave: s.haChiave, risposta: r.risposta };
+    });
+    assert.equal(modalita.haChiave, false);
+    assert.equal(modalita.modalita, 'gratis');
+    // E deve gia' saper rispondere, senza rete e senza account.
+    assert.match(modalita.risposta, /crediti/);
+    assert.deepEqual(errori, [], errori.join(' | '));
+  } finally { await browser.close(); server.close(); }
+});
+
 test('la pagina si carica senza errori e mostra i passi da fare', async () => {
   const { server, porta } = await avviaServer();
   const { browser, pagina, errori } = await apri(WAV_IO);
@@ -72,7 +91,12 @@ test('la pagina si carica senza errori e mostra i passi da fare', async () => {
     assert.equal(await pagina.title(), 'JarvisEria');
     await pagina.waitForSelector('.passo', { timeout: 5000 });
     const passi = await pagina.$$eval('.passo-titolo', (n) => n.map((x) => x.textContent));
-    assert.deepEqual(passi, ['Chiave di Claude', 'La tua voce', 'Listone (facoltativo)']);
+
+    // L'unica cosa davvero obbligatoria e' la voce: deve stare per prima.
+    assert.equal(passi[0], 'La tua voce');
+    // E deve essere chiaro che Claude e' un'aggiunta a pagamento, non un requisito.
+    assert.ok(passi.some((p) => /Claude/.test(p) && /facoltativ/.test(p)),
+      `Claude non e' presentato come facoltativo: ${passi.join(' | ')}`);
     assert.deepEqual(errori, [], `errori in pagina: ${errori.join(' | ')}`);
   } finally { await browser.close(); server.close(); }
 });

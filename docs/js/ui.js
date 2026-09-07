@@ -41,26 +41,29 @@ function controllaCompatibilita() {
 function disegnaPassi() {
   const passi = [
     {
-      fatto: sessione.haChiave,
-      titolo: 'Chiave di Claude',
-      nota: sessione.haChiave ? 'impostata' : 'serve per far ragionare l\'assistente',
-      azione: sessione.haChiave ? null : { testo: 'Inserisci la chiave', fn: apriImpostazioni },
-    },
-    {
       fatto: sessione.arruolato,
       titolo: 'La tua voce',
       nota: sessione.arruolato
         ? `${sessione.profilo.size} impronte registrate`
-        : 'otto frasi, un minuto: e\' cosi' + '’ che impara a riconoscere te',
+        : 'otto frasi, un minuto: e\' cosi\' che impara a riconoscere te',
       azione: sessione.arruolato ? null : { testo: 'Registra la voce', fn: avviaArruolamento },
+      obbligatorio: true,
     },
     {
       fatto: sessione.listone.length > 0,
-      titolo: 'Listone (facoltativo)',
+      titolo: 'Listone (consigliato)',
       nota: sessione.listone.length
         ? `${sessione.listone.length} giocatori caricati`
-        : 'senza, parla di strategia ma non di quotazioni',
+        : 'il CSV delle quotazioni: senza, non conosce i prezzi',
       azione: sessione.listone.length ? null : { testo: 'Carica il CSV', fn: apriImpostazioni },
+    },
+    {
+      fatto: sessione.haChiave,
+      titolo: 'Claude (facoltativo, a pagamento)',
+      nota: sessione.haChiave
+        ? 'attivo: risposte discorsive'
+        : 'senza, funziona tutto gratis con le risposte essenziali',
+      azione: null,
     },
   ];
 
@@ -71,7 +74,7 @@ function disegnaPassi() {
     li.className = 'passo' + (p.fatto ? ' fatto' : '');
     const num = document.createElement('div');
     num.className = 'passo-num';
-    num.textContent = p.fatto ? '✓' : String(i + 1);
+    num.textContent = p.fatto ? '\u2713' : String(i + 1);
     const testo = document.createElement('div');
     testo.className = 'passo-testo';
     const t = document.createElement('div'); t.className = 'passo-titolo'; t.textContent = p.titolo;
@@ -79,7 +82,8 @@ function disegnaPassi() {
     testo.append(t, n);
     if (p.azione) {
       const b = document.createElement('button');
-      b.className = 'primario'; b.textContent = p.azione.testo;
+      b.className = p.obbligatorio ? 'primario' : 'secondario';
+      b.textContent = p.azione.testo;
       b.onclick = p.azione.fn;
       testo.appendChild(b);
     }
@@ -87,12 +91,13 @@ function disegnaPassi() {
     ol.appendChild(li);
   }
 
-  if (sessione.haChiave && sessione.arruolato) {
+  // Basta la voce: il resto e' migliorativo, non necessario.
+  if (sessione.arruolato) {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.className = 'primario';
-    b.textContent = 'Tutto pronto: comincia';
-    b.onclick = () => { mostraSchermata('ascolto'); };
+    b.textContent = 'Comincia';
+    b.onclick = () => mostraSchermata('ascolto');
     li.appendChild(b);
     ol.appendChild(li);
   }
@@ -237,7 +242,9 @@ function gestisciEvento(e) {
   switch (e.tipo) {
     case 'pronto':
       stato('attiva', 'In ascolto', 'Rispondo solo alla tua voce');
-      riga('sys', 'Collegato. Parla pure.');
+      riga('sys', sessione.modalita === 'gratis'
+        ? 'Pronto, modalita\' gratuita. Prova: "quanto posso offrire per..."'
+        : 'Pronto, con Claude. Parla pure.');
       break;
     case 'io':
       if (!sessione.staParlando) stato('io', 'Ti sto ascoltando', `punteggio ${e.punteggio.toFixed(2)}`);
@@ -260,10 +267,15 @@ function gestisciEvento(e) {
     case 'interrotto':
       riga('sys', 'Interrotto: hai ripreso la parola');
       break;
-    case 'finito':
+    case 'finito': {
       rigaBot = null;
-      stato('attiva', 'In ascolto', 'Rispondo solo alla tua voce');
+      const spesa = sessione.spesa();
+      stato('attiva', 'In ascolto',
+        sessione.modalita === 'claude' && spesa.domande
+          ? `${spesa.domande} domande · ${spesa.dollari.toFixed(2)} $ finora`
+          : 'Rispondo solo alla tua voce');
       break;
+    }
     case 'errore':
       riga('sys', 'Errore: ' + e.testo);
       break;
@@ -311,8 +323,14 @@ function apriImpostazioni() {
   $('stato-listone').textContent = sessione.listone.length
     ? `${sessione.listone.length} giocatori caricati`
     : 'nessun listone: l\'assistente non avra\' le quotazioni';
+  const spesa = sessione.spesa();
+  const righeSpesa = sessione.modalita === 'gratis'
+    ? 'modalita\' gratuita: nessun costo, funziona anche senza rete'
+    : (spesa.domande
+        ? `spesa di questa sessione: ${spesa.dollari.toFixed(3)} $ su ${spesa.domande} domande`
+        : 'con Claude: nessuna domanda fatta finora');
   $('diagnostica').textContent =
-    `voce di sistema: ${sessione.voce.nomeVoce} · trascrizione: `
+    `${righeSpesa}\nvoce di sistema: ${sessione.voce.nomeVoce} · trascrizione: `
     + `${trascrizioneDisponibile() ? 'disponibile' : 'non disponibile'}`;
   mostra('pannello', true);
   mostra('velo', true);
@@ -384,7 +402,9 @@ $('zitto').onclick = () => {
 
 // ------------------------------------------------------------- avvio
 controllaCompatibilita();
-mostraSchermata(sessione.haChiave && sessione.arruolato ? 'ascolto' : 'avvio');
-if (sessione.haChiave && sessione.arruolato) {
-  stato('', 'Pronto', 'Tocca Avvia');
+mostraSchermata(sessione.arruolato ? 'ascolto' : 'avvio');
+if (sessione.arruolato) {
+  stato('', 'Pronto', sessione.modalita === 'gratis'
+    ? 'Modalita\' gratuita · tocca Avvia'
+    : 'Con Claude · tocca Avvia');
 }

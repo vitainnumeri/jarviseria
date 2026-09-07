@@ -73,9 +73,23 @@ export class Agente {
     this.storicoTurni = storicoTurni;
     this.messaggi = [];
     this.ultimoUso = null;
+    // Contatori di spesa: meglio un numero misurato che una stima.
+    this.consumo = { ingresso: 0, uscita: 0, daCache: 0, scrittiInCache: 0, domande: 0 };
   }
 
   reset() { this.messaggi = []; }
+
+  /**
+   * Spesa stimata finora, in dollari.
+   *
+   * I prezzi sono quelli di Claude Opus 5; le riletture dalla cache costano un
+   * decimo dell'ingresso, le scritture un quarto in piu'.
+   */
+  costoStimato() {
+    const { ingresso, uscita, daCache, scrittiInCache } = this.consumo;
+    const dollari = (ingresso * 5 + scrittiInCache * 6.25 + daCache * 0.5 + uscita * 25) / 1e6;
+    return { dollari: Number(dollari.toFixed(4)), ...this.consumo };
+  }
 
   _pota() {
     const limite = this.storicoTurni * 2;
@@ -101,7 +115,11 @@ export class Agente {
       body: JSON.stringify({
         model: MODELLO,
         max_tokens: this.maxTokens,
-        system: this.system,
+        // Istruzioni e strumenti sono identici a ogni domanda e pesano circa
+        // 1800 token: senza cache si pagherebbero per intero ogni volta. Marcati
+        // cosi', dalla seconda domanda in poi costano un decimo. E' il taglio di
+        // spesa piu' grande possibile qui, e non toglie niente alla qualita'.
+        system: [{ type: 'text', text: this.system, cache_control: { type: 'ephemeral' } }],
         messages: this.messaggi,
         ...(this.tools.length ? { tools: this.tools } : {}),
         // Effort basso: in una conversazione a voce la latenza conta piu' della
@@ -128,6 +146,7 @@ export class Agente {
    */
   async *rispondi(testoUtente, { segnale = null } = {}) {
     this.messaggi.push({ role: 'user', content: testoUtente });
+    this.consumo.domande++;
     this._pota();
 
     for (let giro = 0; giro < MAX_GIRI_STRUMENTI; giro++) {
@@ -161,9 +180,12 @@ export class Agente {
             if (bloccoCorrente) blocchi.push(bloccoCorrente);
             bloccoCorrente = null;
             break;
+          case 'message_start':
+            this._conta(evento.message?.usage);
+            break;
           case 'message_delta':
             stopReason = evento.delta?.stop_reason ?? stopReason;
-            if (evento.usage) this.ultimoUso = evento.usage;
+            this._conta(evento.usage);
             break;
           case 'error':
             throw new ErroreLLM(evento.error?.message || 'errore nel flusso');
@@ -187,6 +209,15 @@ export class Agente {
     }
 
     yield ' Sto girando a vuoto sugli strumenti, riformuliamo la domanda.';
+  }
+
+  _conta(uso) {
+    if (!uso) return;
+    this.ultimoUso = uso;
+    this.consumo.ingresso += uso.input_tokens || 0;
+    this.consumo.uscita += uso.output_tokens || 0;
+    this.consumo.daCache += uso.cache_read_input_tokens || 0;
+    this.consumo.scrittiInCache += uso.cache_creation_input_tokens || 0;
   }
 
   /** Versione non incrementale, comoda per i test. */

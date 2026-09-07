@@ -25,7 +25,7 @@
     <p class="occhiello">Assistente di fantacalcio</p>
     <h2>Risponde solo alla tua voce.</h2>
     <p class="sottotitolo">Gira tutto qui dentro: nessun computer acceso, nessun programma da
-      installare. In mezzo a gente che parla, sente te.</p>
+      installare, <strong>nessun costo</strong>. In mezzo a gente che parla, sente te.</p>
   </div>
 
   <ol class="passi" id="passi"></ol>
@@ -78,16 +78,29 @@
   </div>
 
   <div class="pannello-corpo">
+    <div class="dettagli" style="background:none">
+      <p class="nota-campo" style="margin:0">
+        <strong>Modalita' gratuita</strong> (predefinita): risponde il motore che sta dentro
+        l'app. Conosce l'asta, i prezzi, la formazione e il regolamento, ed e' gratis per
+        sempre — funziona anche senza rete. Non discute e non improvvisa: se non capisce
+        la domanda te lo dice.
+      </p>
+    </div>
+
     <label class="campo">
-      <span>Chiave di Claude</span>
+      <span>Chiave di Claude — facoltativa, a pagamento</span>
       <input id="api-key" type="password" inputmode="text" autocomplete="off"
              placeholder="sk-ant-..." spellcheck="false">
     </label>
+    <p class="nota-campo">
+      Serve solo se vuoi risposte discorsive, che ragionano su domande fuori dai binari.
+      Lasciala vuota e l'app resta gratuita.
+    </p>
     <p class="avvertenza">
-      La chiave resta nella memoria di questo telefono e viene mandata solo ad Anthropic.
-      Chiunque possa sbloccare il telefono puo' leggerla: <strong>crea una chiave dedicata a
-      questa app e mettici un tetto di spesa</strong>, cosi' se il telefono si perde il danno
-      e' limitato.
+      Se la metti: la chiave resta nella memoria di questo telefono e viene mandata solo ad
+      Anthropic. Chiunque possa sbloccare il telefono puo' leggerla, quindi <strong>creane una
+      dedicata a questa app con un tetto di spesa</strong>. Costo indicativo: meno di un
+      centesimo a domanda.
     </p>
 
     <label class="campo">
@@ -113,9 +126,10 @@
         timbro e l'altezza della voce, e confronta ogni secondo e mezzo di parlato con quel
         profilo. Le voci che rifiuta finiscono in un elenco di "altri": dopo qualche minuto nella
         stessa stanza diventa piu' severo proprio verso chi c'e'.</p>
-      <p>La trascrizione usa il riconoscimento vocale del browser: su Chrome l'audio passa dai
-        server di Google. Il ragionamento e' di Claude, quindi il testo della conversazione va ad
-        Anthropic. Il tuo profilo vocale invece non esce mai da questo telefono.</p>
+      <p>In modalita' gratuita l'unica cosa che esce dal telefono e' la trascrizione: il
+        riconoscimento vocale del browser, che su Chrome passa dai server di Google. Tutto il
+        resto — profilo vocale, calcoli d'asta, formazione — resta qui.</p>
+      <p>Se attivi Claude, ci va anche il testo della conversazione (mai l'audio).</p>
       <p><strong>Non e' un sistema di sicurezza.</strong> Un'imitazione fatta bene, o una
         registrazione della tua voce riprodotta da un altoparlante, possono passare. Serve a non
         farsi interrompere dagli altri in una stanza, non a proteggere niente.</p>
@@ -126,6 +140,7 @@
     </details>
 
     <p class="versione" id="diagnostica"></p>
+    <p class="nota-campo">Il conto lo tiene anche Anthropic: su <strong>console.anthropic.com</strong>, alla voce Usage, vedi la spesa reale giorno per giorno.</p>
   </div>
 </div>
 

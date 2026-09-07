@@ -12,7 +12,7 @@ dire — sente te e ignora tutti gli altri, senza parola di attivazione.
 |---|---|---|
 | `jarvis run` | PC con microfono | rete neurale ECAPA-TDNN |
 | `jarvis serve` | PC acceso, telefono come microfono | rete neurale ECAPA-TDNN |
-| [app nel telefono](#solo-il-telefono-senza-computer) | **solo il telefono** | caratteristiche acustiche, piu' debole |
+| [app nel telefono](#solo-il-telefono-senza-computer) | **solo il telefono, gratis** | caratteristiche acustiche, piu' debole |
 
 Se vuoi solo provarlo subito e non hai voglia di installare niente, vai
 direttamente all'ultima riga.
@@ -458,7 +458,45 @@ Aprilo dal telefono, tocca *Aggiungi a schermata Home* e diventa un'icona come
 un'app. Al primo avvio ti chiede tre cose: la chiave di Claude, otto frasi per
 imparare la tua voce, e (facoltativo) il CSV del listone.
 
-### Cosa fa il telefono da solo
+### Gratis davvero: due modalita'
+
+L'app parte in **modalita' gratuita** e non chiede nessun account, nessuna carta,
+nessuna chiave. Risponde un motore che sta dentro l'app.
+
+| | Gratuita (predefinita) | Con Claude (facoltativa) |
+|---|---|---|
+| Costo | **zero, per sempre** | meno di un centesimo a domanda |
+| Serve un account | no | si', su console.anthropic.com |
+| Funziona senza rete | si' (tranne la trascrizione) | no |
+| Conti d'asta, formazione, regolamento | si', identici | si', identici |
+| Domande fuori dai binari | dice che non ha capito | ragiona e risponde |
+
+**I numeri sono gli stessi nelle due modalita'.** Il tetto d'offerta, il budget
+residuo, la formazione: li calcola lo stesso codice. Claude non e' li' per fare
+i conti — quelli sono aritmetica, e l'aritmetica non ha bisogno di un modello.
+Serve solo a parlare in modo piu' sciolto.
+
+Cosa capisce la modalita' gratuita:
+
+```
+"Quanto posso offrire per Lautaro?"     -> il tetto, e perche' e' quello
+"Preso Dimarco a centoventi"            -> registra e ricalcola tutto
+"Quanto mi resta?"                      -> crediti, slot, massimo offribile
+"Come divido il budget?"                -> il piano per reparto
+"Meglio Lautaro o Vlahovic?"            -> il confronto, con la ragione
+"I migliori attaccanti"                 -> i piu' quotati del listone
+"Fammi la formazione"                   -> modulo e undici titolari
+"Quanto vale un gol?"                   -> bonus e malus
+```
+
+Capisce i prezzi sia in cifre sia detti a voce ("centoventi", "centottanta"), e
+risponde con i numeri in lettere perche' la voce sintetica li scandisca bene.
+
+Quello che **non** fa: non discute, non ragiona su domande impreviste, non
+capisce le frasi molto storte. Quando non riconosce la domanda lo dice e ti
+ricorda cosa puo' fare, invece di inventare.
+
+### Cosa gira dove
 
 | Pezzo | Dove gira |
 |---|---|
@@ -466,7 +504,7 @@ imparare la tua voce, e (facoltativo) il CSV del listone.
 | MFCC, pitch, rumore di fondo, coorte | **nel telefono** |
 | Motore d'asta e di formazione | **nel telefono** |
 | Trascrizione | riconoscimento vocale del browser (su Chrome passa da Google) |
-| Ragionamento | API di Claude: ci va il testo, mai l'audio |
+| Ragionamento | **nel telefono** in modalita' gratuita; con Claude ci va il testo, mai l'audio |
 | Voce sintetica | **nel telefono**, voce di sistema |
 
 ### La differenza onesta rispetto alla versione da computer
@@ -500,12 +538,19 @@ Quando arriva una frase trascritta, si guarda cosa diceva la biometria
 modello; altrimenti viene scartata e la vedi comparire in grigio, barrata, con
 il punteggio: cosi' sai sempre perche' non ha risposto.
 
-### La chiave API sul telefono: leggi questo
+### La chiave API sul telefono: solo se scegli Claude
+
+Questa parte riguarda solo chi attiva la modalita' a pagamento. In modalita'
+gratuita non c'e' nessuna chiave e questo paragrafo non ti serve.
 
 L'app chiama Claude direttamente dal browser, il che richiede un header
 esplicito (`anthropic-dangerous-direct-browser-access`) il cui nome dice
 esattamente cosa comporta: **la chiave vive nella memoria del browser di quel
 telefono**. Chiunque possa sbloccarlo puo' leggerla.
+
+Istruzioni e strumenti sono marcati per la cache, quindi dalla seconda domanda
+in poi quei circa 1800 token costano un decimo. Il pannello impostazioni mostra
+la spesa misurata sui token dichiarati dall'API, non stimata.
 
 La mitigazione giusta non e' nascondere il problema, e' contenerlo: **crea una
 chiave API dedicata a questa app e mettile un tetto di spesa** nella console
@@ -690,6 +735,8 @@ docs/           versione che gira TUTTA nel telefono (GitHub Pages)
   js/verifier.js  profilo vocale, coorte, decisione
   js/fanta.js     listone, asta, formazione
   js/llm.js       client di Claude in streaming dal browser
+  js/cervello.js  il motore gratuito: intenzioni e risposte, offline
+  js/numeri.js    prezzi detti a voce ("centottanta") e viceversa
   js/app.js       incrocia biometria e trascrizione
 ```
 
@@ -703,7 +750,7 @@ pip install -e ".[dev]"
 pytest -q                # 261 test della versione da computer
 
 npm install              # solo per la versione telefono
-npm test                 # 54 test di logica + 4 nel browser vero
+npm test                 # 88 test di logica + 5 nel browser vero
 ```
 
 I quattro test nel browser sono quelli che contano per la versione telefono:
@@ -712,7 +759,7 @@ davvero `getUserMedia`, l'AudioWorklet, il ricampionamento, gli MFCC e la
 decisione. Uno registra il profilo dalla voce del proprietario e verifica che si
 riconosca; l'altro gli fa sentire una persona diversa e verifica che la rifiuti.
 
-261 test Python e 58 JavaScript, e nessuno di essi richiede microfono, modelli
+261 test Python e 93 JavaScript, e nessuno di essi richiede microfono, modelli
 o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
 
 Il test che conta e' `test_session.py::test_stanza_affollata_una_sola_risposta`:

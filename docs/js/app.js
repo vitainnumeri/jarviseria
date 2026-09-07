@@ -14,6 +14,7 @@
 
 import { NoiseFloor, dbfs, resample } from './dsp.js';
 import { Agente, frasi, svuotaFrasi } from './llm.js';
+import { Cervello } from './cervello.js';
 import { Asta, Listone } from './fanta.js';
 import { DEFINIZIONI, Strumenti } from './strumenti.js';
 import { istruzioni } from './prompt.js';
@@ -128,6 +129,9 @@ export class Sessione {
     this.asta = Asta.fromJSON(archivio.leggi(CHIAVI.asta));
     this.asta.budget = this.config.budget;
     this.strumenti = new Strumenti(this.listone, this.asta);
+    // Il cervello offline e' sempre pronto: e' la modalita' predefinita, non
+    // un ripiego. Senza chiave l'app funziona e non costa niente.
+    this.cervello = new Cervello(this.strumenti);
 
     this.profilo = VoiceProfile.fromJSON(archivio.leggi(CHIAVI.profilo));
     this.soglie = archivio.leggi(CHIAVI.soglie, {}) || {};
@@ -148,7 +152,27 @@ export class Sessione {
   }
 
   get arruolato() { return this.profilo.size > 0; }
+
+  /**
+   * Quanto e' costata la conversazione finora.
+   *
+   * Misurato sui token che l'API dichiara di aver consumato, non stimato:
+   * quando si spendono soldi veri, una stima non basta.
+   */
+  spesa() {
+    if (!this.agente) return { dollari: 0, domande: 0, gratis: true };
+    const c = this.agente.costoStimato();
+    return { ...c, centesimi: Math.round(c.dollari * 100), euro: c.dollari * 0.92 };
+  }
   get haChiave() { return Boolean(archivio.leggi(CHIAVI.apiKey)); }
+
+  /**
+   * 'gratis' = risponde il cervello dentro l'app; 'claude' = risponde il modello.
+   *
+   * La sceglie la presenza della chiave, non un interruttore: se non l'hai
+   * messa e' perche' non la vuoi, e l'app deve funzionare lo stesso.
+   */
+  get modalita() { return this.haChiave ? 'claude' : 'gratis'; }
 
   // ------------------------------------------------------ configurazione
   salvaChiave(chiave) { archivio.scrivi(CHIAVI.apiKey, chiave.trim()); }
@@ -208,10 +232,9 @@ export class Sessione {
   // ------------------------------------------------------------- ascolto
   async avvia() {
     if (!this.arruolato) throw new Error('devi prima registrare la tua voce');
-    const chiave = archivio.leggi(CHIAVI.apiKey);
-    if (!chiave) throw new Error('manca la chiave di Claude');
 
-    this.agente = new Agente({
+    const chiave = archivio.leggi(CHIAVI.apiKey);
+    this.agente = chiave ? new Agente({
       apiKey: chiave,
       system: istruzioni({ budget: this.config.budget, listone: this.listone.length }),
       tools: DEFINIZIONI,
@@ -221,7 +244,7 @@ export class Sessione {
         this.onEvento({ tipo: 'strumento', nome });
         return esito;
       },
-    });
+    }) : null;
 
     this.microfono = new Microfono((frame) => this._frame(frame));
     await this.microfono.avvia();
@@ -318,6 +341,33 @@ export class Sessione {
   }
 
   async _rispondi(testo) {
+    if (this.modalita === 'gratis') return this._rispondiOffline(testo);
+    return this._rispondiConClaude(testo);
+  }
+
+  /**
+   * Risposta del cervello offline: immediata, gratuita, senza rete.
+   *
+   * Non c'e' streaming perche' non c'e' niente da aspettare - la frase e' gia'
+   * pronta nel momento in cui si capisce la domanda.
+   */
+  async _rispondiOffline(testo) {
+    this.staParlando = true;
+    const controller = new AbortController();
+    this.annullaRisposta = controller;
+    try {
+      const { risposta, intenzione } = this.cervello.ascolta(testo);
+      this.onEvento({ tipo: 'dice', testo: risposta, intenzione });
+      archivio.scrivi(CHIAVI.asta, this.asta.toJSON());
+      if (!controller.signal.aborted) await this.voce.parla(risposta);
+      this.onEvento({ tipo: 'finito', testo: risposta });
+    } finally {
+      this.staParlando = false;
+      this.annullaRisposta = null;
+    }
+  }
+
+  async _rispondiConClaude(testo) {
     const controller = new AbortController();
     this.annullaRisposta = controller;
     const stato = { buffer: '' };
