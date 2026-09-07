@@ -250,8 +250,15 @@ class SpeakerVerifier:
             return result
 
         self.stats["turns_rejected"] += 1
-        if learn and self.cfg.cohort_auto_learn and ratio == 0.0:
-            # Turno interamente estraneo: impara chi altro c'e' nella stanza.
+        # Impara la voce solo se e' CHIARAMENTE di un altro. Un turno mio
+        # respinto per un soffio - ho parlato piano, mi sono girato dall'altra
+        # parte - non deve finire fra gli estranei: da li' in poi il margine
+        # lavorerebbe contro di me e il sistema smetterebbe progressivamente di
+        # riconoscermi. E' una deriva silenziosa e lenta, quindi difficile da
+        # attribuire quando succede.
+        median_score = float(np.median(owner_scores))
+        clearly_stranger = median_score < self._threshold() * 0.5
+        if learn and self.cfg.cohort_auto_learn and ratio == 0.0 and clearly_stranger:
             self._learn_stranger(audio)
         return VerificationResult(
             decision=Decision.STRANGER,

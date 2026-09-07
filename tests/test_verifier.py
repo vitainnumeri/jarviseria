@@ -143,3 +143,25 @@ def test_profilo_si_salva_e_ricarica(tmp_path, owner_profile):
 def test_errore_chiaro_se_il_profilo_non_esiste(tmp_path):
     with pytest.raises(FileNotFoundError, match="jarvis enroll"):
         VoiceProfile.load(tmp_path / "assente.npz")
+
+
+def test_un_mio_turno_rifiutato_per_un_soffio_non_finisce_fra_gli_estranei(embedder, owner_profile):
+    """La deriva silenziosa: se i miei turni borderline entrano in coorte, il
+    margine comincia a lavorarmi contro e il sistema smette di riconoscermi.
+
+    Trovato misurando la versione per telefono, dove costava meta' dei falsi
+    rifiuti; qui la logica e' identica, quindi il difetto c'era uguale.
+    """
+    cfg = VerifierConfig(accept_threshold=0.95, near_field_enabled=False)  # soglia irreale
+    verifier = SpeakerVerifier(embedder, owner_profile, cfg, Cohort())
+
+    risultato = verifier.verify(speech(0, 3.0))          # sono io, ma vengo respinto
+    assert not risultato.is_owner
+    assert verifier.cohort.size == 0, "la mia voce e' finita fra gli estranei"
+
+
+def test_una_voce_davvero_estranea_entra_in_coorte(embedder, owner_profile):
+    cfg = VerifierConfig(accept_threshold=0.62, near_field_enabled=False)
+    verifier = SpeakerVerifier(embedder, owner_profile, cfg, Cohort())
+    verifier.verify(speech(4, 3.0))
+    assert verifier.cohort.size == 1

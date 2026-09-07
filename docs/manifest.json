@@ -1,0 +1,18 @@
+{
+  "name": "JarvisEria - fantacalcio a voce",
+  "short_name": "JarvisEria",
+  "description": "Assistente di fantacalcio che risponde solo alla tua voce.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%230e1116'/%3E%3Cpath d='M96 40a20 20 0 0 1 20 20v36a20 20 0 0 1-40 0V60a20 20 0 0 1 20-20z' fill='%234a9eff'/%3E%3Cpath d='M60 92a36 36 0 0 0 72 0' stroke='%234a9eff' stroke-width='10' fill='none' stroke-linecap='round'/%3E%3Cpath d='M96 128v24' stroke='%234a9eff' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

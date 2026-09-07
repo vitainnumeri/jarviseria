@@ -6,6 +6,17 @@ Conversazione continua, stile telefonata: parli, ti risponde, puoi interromperlo
 a meta' frase. In mezzo a una stanza di gente che parla — una sala d'asta, per
 dire — sente te e ignora tutti gli altri, senza parola di attivazione.
 
+**Tre modi di usarlo**, dal piu' preciso al piu' comodo:
+
+| | Cosa serve | Riconoscimento |
+|---|---|---|
+| `jarvis run` | PC con microfono | rete neurale ECAPA-TDNN |
+| `jarvis serve` | PC acceso, telefono come microfono | rete neurale ECAPA-TDNN |
+| [app nel telefono](#solo-il-telefono-senza-computer) | **solo il telefono** | caratteristiche acustiche, piu' debole |
+
+Se vuoi solo provarlo subito e non hai voglia di installare niente, vai
+direttamente all'ultima riga.
+
 ```
 tu>     quanto posso spingere su Lookman?
 jarvis> Fino a novantaquattro. Hai duecentodieci crediti e nove slot,
@@ -436,6 +447,84 @@ Prima di tutto: `jarvis doctor`. Poi, se il server parte ma il telefono no:
 | Si apre ma non risponde | Il PC ha il firewall sulla porta 8765 |
 | Si sente a scatti | Wi-Fi debole: la voce ha bisogno di 32 KB/s scarsi, ma stabili |
 
+## Solo il telefono, senza computer
+
+Se non vuoi tenere acceso un PC, c'e' una seconda versione che gira **tutta nel
+telefono**: si apre da un indirizzo normale e non chiede di installare niente.
+
+**https://vitainnumeri.github.io/jarviseria/**
+
+Aprilo dal telefono, tocca *Aggiungi a schermata Home* e diventa un'icona come
+un'app. Al primo avvio ti chiede tre cose: la chiave di Claude, otto frasi per
+imparare la tua voce, e (facoltativo) il CSV del listone.
+
+### Cosa fa il telefono da solo
+
+| Pezzo | Dove gira |
+|---|---|
+| Riconoscimento della tua voce | **nel telefono**, non esce mai |
+| MFCC, pitch, rumore di fondo, coorte | **nel telefono** |
+| Motore d'asta e di formazione | **nel telefono** |
+| Trascrizione | riconoscimento vocale del browser (su Chrome passa da Google) |
+| Ragionamento | API di Claude: ci va il testo, mai l'audio |
+| Voce sintetica | **nel telefono**, voce di sistema |
+
+### La differenza onesta rispetto alla versione da computer
+
+Sul computer il riconoscimento del parlante e' una rete neurale (ECAPA-TDNN)
+addestrata su migliaia di voci. Nel telefono non c'e': ci sono le
+caratteristiche acustiche calcolate a mano — timbro (MFCC), quanto varia, e
+altezza della voce (pitch) — confrontate con una distanza standardizzata sulla
+variabilita' misurata durante l'arruolamento.
+
+E' **piu' debole**. Nelle misure con voci sintetiche separa benissimo, ma le
+voci vere sono piu' vicine fra loro di quelle di prova. Con gli auricolari
+funziona bene; con il telefono appoggiato sul tavolo in mezzo a venti persone,
+la versione da computer resta piu' affidabile.
+
+La *logica* di decisione invece e' la stessa, ed e' quella che regge in una
+stanza affollata: campo vicino, somiglianza, **margine sulla coorte**,
+maggioranza delle finestre.
+
+### Come sa che stavi parlando tu
+
+Due flussi indipendenti che si incrociano:
+
+- il **flusso audio**, da cui ogni ~0,75 s esce un giudizio "questa finestra e'
+  il proprietario / e' un altro";
+- il **riconoscimento vocale del sistema**, che trascrive tutto quello che
+  sente, tuo e altrui allo stesso modo.
+
+Quando arriva una frase trascritta, si guarda cosa diceva la biometria
+*nell'intervallo di quella frase*. Se in quel momento parlavi tu, la frase va al
+modello; altrimenti viene scartata e la vedi comparire in grigio, barrata, con
+il punteggio: cosi' sai sempre perche' non ha risposto.
+
+### La chiave API sul telefono: leggi questo
+
+L'app chiama Claude direttamente dal browser, il che richiede un header
+esplicito (`anthropic-dangerous-direct-browser-access`) il cui nome dice
+esattamente cosa comporta: **la chiave vive nella memoria del browser di quel
+telefono**. Chiunque possa sbloccarlo puo' leggerla.
+
+La mitigazione giusta non e' nascondere il problema, e' contenerlo: **crea una
+chiave API dedicata a questa app e mettile un tetto di spesa** nella console
+Anthropic. Se il telefono si perde, revochi quella chiave e il danno finisce li'.
+
+Se questo non ti va bene, usa la modalita' con il computer (`jarvis serve`): li'
+la chiave resta sul PC e il telefono e' solo un microfono.
+
+### Limiti specifici di questa versione
+
+- **Su iPhone, Safari non sa trascrivere la voce.** Usa Chrome, oppure la
+  modalita' con il computer. L'app te lo dice all'apertura invece di sembrare
+  rotta.
+- Serve rete per il ragionamento (la trascrizione su Chrome pure).
+- Schermo bloccato significa app sospesa: la pagina chiede un wake lock, ma non
+  tutti i telefoni lo concedono.
+- Budget, rosa e profilo vocale vivono nella memoria del browser. Se cancelli i
+  dati del sito, spariscono.
+
 ## Cosa sa fare, in asta e in formazione
 
 L'assistente ha strumenti veri, non solo memoria del modello.
@@ -594,7 +683,14 @@ src/jarvis/
   tts/          sintesi vocale (Piper locale, ElevenLabs, OpenAI)
   fanta/        listone, motore d'asta, motore di formazione, regolamento
   session/      orchestratore full-duplex, parola di attivazione
-  web/          modalita' telefono: server, trasporto audio, TLS, pagina
+  web/          modalita' telefono-come-microfono: server, trasporto, TLS
+
+docs/           versione che gira TUTTA nel telefono (GitHub Pages)
+  js/dsp.js       MFCC, pitch, rumore di fondo
+  js/verifier.js  profilo vocale, coorte, decisione
+  js/fanta.js     listone, asta, formazione
+  js/llm.js       client di Claude in streaming dal browser
+  js/app.js       incrocia biometria e trascrizione
 ```
 
 I provider sono intercambiabili: ognuno e' dietro un'interfaccia minima, e
@@ -604,10 +700,20 @@ cambiarne uno e' una riga di configurazione.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q
+pytest -q                # 261 test della versione da computer
+
+npm install              # solo per la versione telefono
+npm test                 # 54 test di logica + 4 nel browser vero
 ```
 
-261 test, e nessuno di essi richiede microfono, modelli o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
+I quattro test nel browser sono quelli che contano per la versione telefono:
+avviano Chromium con un file WAV al posto del microfono, quindi percorrono
+davvero `getUserMedia`, l'AudioWorklet, il ricampionamento, gli MFCC e la
+decisione. Uno registra il profilo dalla voce del proprietario e verifica che si
+riconosca; l'altro gli fa sentire una persona diversa e verifica che la rifiuti.
+
+261 test Python e 58 JavaScript, e nessuno di essi richiede microfono, modelli
+o rete: le voci sintetiche e l'embedder controllato stanno in `tests/conftest.py`.
 
 Il test che conta e' `test_session.py::test_stanza_affollata_una_sola_risposta`:
 sette persone parlano a turno attraverso la catena completa, ne esce una sola

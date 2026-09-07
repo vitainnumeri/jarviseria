@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="description" content="Assistente di fantacalcio che risponde solo alla tua voce. Gira interamente nel telefono.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1116'/%3E%3Crect x='25' y='12' width='14' height='26' rx='7' fill='%234a9eff'/%3E%3Cpath d='M18 32a14 14 0 0 0 28 0' stroke='%234a9eff' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3Cpath d='M32 46v6' stroke='%234a9eff' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>JarvisEria</title>
+<link rel="stylesheet" href="stile.css">
+</head>
+<body>
+
+<header>
+  <h1>JarvisEria</h1>
+  <button id="apri-impostazioni" class="icona" aria-label="Impostazioni">&#9881;</button>
+</header>
+
+<!-- ============================ AVVIO ============================ -->
+<section id="schermata-avvio" class="schermata">
+  <div class="intro">
+    <p class="occhiello">Assistente di fantacalcio</p>
+    <h2>Risponde solo alla tua voce.</h2>
+    <p class="sottotitolo">Gira tutto qui dentro: nessun computer acceso, nessun programma da
+      installare. In mezzo a gente che parla, sente te.</p>
+  </div>
+
+  <ol class="passi" id="passi"></ol>
+
+  <div id="avvisi"></div>
+</section>
+
+<!-- ======================== ARRUOLAMENTO ========================= -->
+<section id="schermata-voce" class="schermata nascosta">
+  <h2 class="titolo-sezione">Registra la tua voce</h2>
+  <p class="nota">Leggi le frasi con voce naturale, come parlerai davvero. Usa gli auricolari
+    che userai all'asta: il profilo dipende anche dal microfono.</p>
+
+  <div class="progresso"><div id="barra-progresso"></div></div>
+  <p class="contatore" id="contatore-frasi">Frase 1 di 8</p>
+
+  <blockquote id="frase-corrente"></blockquote>
+
+  <div id="stato-registrazione" class="stato-reg"></div>
+
+  <footer class="azioni">
+    <button id="registra" class="primario">Tieni premuto e leggi</button>
+    <button id="annulla-voce" class="secondario">Annulla</button>
+  </footer>
+</section>
+
+<!-- =========================== ASCOLTO =========================== -->
+<section id="schermata-ascolto" class="schermata nascosta">
+  <div id="stato">
+    <div id="spia"></div>
+    <div>
+      <div id="stato-testo">In ascolto</div>
+      <div id="stato-nota">Rispondo solo alla tua voce</div>
+    </div>
+  </div>
+
+  <div id="conversazione"></div>
+
+  <footer class="azioni">
+    <button id="ascolta" class="primario">Avvia</button>
+    <button id="zitto" class="secondario" disabled>Zitto</button>
+  </footer>
+</section>
+
+<!-- ======================== IMPOSTAZIONI ========================= -->
+<div id="pannello" class="pannello nascosta">
+  <div class="pannello-testata">
+    <h2>Impostazioni</h2>
+    <button id="chiudi-impostazioni" class="icona" aria-label="Chiudi">&#10005;</button>
+  </div>
+
+  <div class="pannello-corpo">
+    <label class="campo">
+      <span>Chiave di Claude</span>
+      <input id="api-key" type="password" inputmode="text" autocomplete="off"
+             placeholder="sk-ant-..." spellcheck="false">
+    </label>
+    <p class="avvertenza">
+      La chiave resta nella memoria di questo telefono e viene mandata solo ad Anthropic.
+      Chiunque possa sbloccare il telefono puo' leggerla: <strong>crea una chiave dedicata a
+      questa app e mettici un tetto di spesa</strong>, cosi' se il telefono si perde il danno
+      e' limitato.
+    </p>
+
+    <label class="campo">
+      <span>Budget d'asta (crediti)</span>
+      <input id="budget" type="number" inputmode="numeric" min="1" step="1" value="500">
+    </label>
+
+    <label class="campo">
+      <span>Listone (CSV delle quotazioni)</span>
+      <input id="file-listone" type="file" accept=".csv,text/csv,text/plain">
+    </label>
+    <p class="nota-campo" id="stato-listone"></p>
+
+    <div class="gruppo-bottoni">
+      <button id="azzera-asta" class="secondario">Azzera l'asta</button>
+      <button id="rifai-voce" class="secondario">Rifai la voce</button>
+      <button id="cancella-tutto" class="pericolo">Cancella tutto</button>
+    </div>
+
+    <details class="dettagli">
+      <summary>Come funziona, e cosa non fa</summary>
+      <p>Il riconoscimento della voce gira <strong>qui nel telefono</strong>: registra il tuo
+        timbro e l'altezza della voce, e confronta ogni secondo e mezzo di parlato con quel
+        profilo. Le voci che rifiuta finiscono in un elenco di "altri": dopo qualche minuto nella
+        stessa stanza diventa piu' severo proprio verso chi c'e'.</p>
+      <p>La trascrizione usa il riconoscimento vocale del browser: su Chrome l'audio passa dai
+        server di Google. Il ragionamento e' di Claude, quindi il testo della conversazione va ad
+        Anthropic. Il tuo profilo vocale invece non esce mai da questo telefono.</p>
+      <p><strong>Non e' un sistema di sicurezza.</strong> Un'imitazione fatta bene, o una
+        registrazione della tua voce riprodotta da un altoparlante, possono passare. Serve a non
+        farsi interrompere dagli altri in una stanza, non a proteggere niente.</p>
+      <p>La versione da computer di questo progetto usa una rete neurale addestrata su migliaia
+        di voci ed e' nettamente piu' precisa. Questa qui fa i conti a mano perche' deve stare in
+        un telefono senza scaricare nulla: funziona bene con gli auricolari, meno bene con il
+        telefono sul tavolo.</p>
+    </details>
+
+    <p class="versione" id="diagnostica"></p>
+  </div>
+</div>
+
+<div id="velo" class="nascosta"></div>
+
+<script type="module" src="js/ui.js"></script>
+</body>
+</html>
