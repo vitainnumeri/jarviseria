@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npm run test:logica && npm run test:browser",
     "test:logica": "node --test tests-web/verifier.test.mjs tests-web/fanta.test.mjs",
-    "test:browser": "node tests-web/genera-wav.mjs /tmp/jarvis-io.wav 0 40 && node tests-web/genera-wav.mjs /tmp/jarvis-altro.wav 3 40 && node --test --test-timeout=90000 tests-web/browser.test.mjs"
+    "test:browser": "node --test --test-timeout=90000 tests-web/browser.test.mjs"
   },
   "devDependencies": { "playwright": "^1.49.0" }
 }

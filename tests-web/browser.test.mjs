@@ -6,19 +6,32 @@
 // invece di sperarlo.
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import { chromium } from 'playwright';
+
+import { parla } from './voci.mjs';
+import { scriviWav } from './genera-wav.mjs';
 
 // La versione di Playwright installata cerca un build piu' recente di quello
 // presente: si punta direttamente al binario che c'e'.
 const CHROMIUM = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
 const RADICE = new URL('../docs/', import.meta.url).pathname;
-const WAV_IO = process.env.JARVIS_WAV_IO || '/tmp/jarvis-io.wav';
-const WAV_ALTRO = process.env.JARVIS_WAV_ALTRO || '/tmp/jarvis-altro.wav';
+const WAV_IO = join(tmpdir(), 'jarvis-io.wav');
+const WAV_ALTRO = join(tmpdir(), 'jarvis-altro.wav');
+
+// I file li genera il test stesso: se mancassero, Chromium darebbe silenzio al
+// posto del microfono e la prova del rifiuto passerebbe per il motivo
+// sbagliato - un estraneo muto viene respinto anche da un sistema rotto.
+before(() => {
+  if (!existsSync(WAV_IO)) scriviWav(WAV_IO, parla(0, 40, 42));
+  if (!existsSync(WAV_ALTRO)) scriviWav(WAV_ALTRO, parla(3, 40, 42));
+});
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
                '.json': 'application/json' };
 
@@ -115,14 +128,17 @@ test('arruolamento e riconoscimento dal microfono del browser', async () => {
       const soglie = calibrate(profilo);
       const ver = new SpeakerVerifier(profilo, { ...soglie, nearFieldEnabled: false });
       const prova = await registra(4);
+      const { dbfs } = await import('./js/dsp.js');
+      const esito = ver.verify(prova);
       return {
-        impronte: profilo.size,
-        soglia: soglie.acceptThreshold,
-        decisione: ver.verify(prova).decision,
-        punteggio: ver.verify(prova).score,
+        impronte: profilo.size, soglia: soglie.acceptThreshold,
+        decisione: esito.decision, punteggio: esito.score,
+        livelloDb: dbfs(prova), secondi: prova.length / SR,
       };
     });
 
+    assert.ok(esito.livelloDb > -45,
+      `il microfono era muto (${esito.livelloDb.toFixed(1)} dB): la prova non vale`);
     assert.ok(esito.impronte >= 6, `solo ${esito.impronte} impronte`);
     assert.equal(esito.decisione, 'owner',
       `non si e' riconosciuto dal microfono (punteggio ${esito.punteggio})`);
@@ -159,10 +175,16 @@ test('una voce diversa dal microfono viene rifiutata', async () => {
       let off = 0;
       for (const p of pezzi) { audio.set(p, off); off += p.length; }
 
+      const { dbfs } = await import('./js/dsp.js');
       const r = ver.verify(audio);
-      return { decisione: r.decision, punteggio: r.score, soglia: soglie.acceptThreshold };
+      return { decisione: r.decision, punteggio: r.score, soglia: soglie.acceptThreshold,
+               livelloDb: dbfs(audio), secondi: audio.length / 16000 };
     });
 
+    // Prima di credere al rifiuto, verifico che ci fosse qualcosa da rifiutare.
+    assert.ok(esito.secondi > 2, `catturati solo ${esito.secondi.toFixed(1)}s`);
+    assert.ok(esito.livelloDb > -45,
+      `il microfono era muto (${esito.livelloDb.toFixed(1)} dB): il rifiuto non prova niente`);
     assert.notEqual(esito.decisione, 'owner',
       `una voce estranea dal microfono e' passata (punteggio ${esito.punteggio}, soglia ${esito.soglia})`);
     assert.deepEqual(errori, [], errori.join(' | '));
