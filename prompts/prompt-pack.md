@@ -7,6 +7,8 @@ l'interfaccia è in italiano.
 shot alla volta. Non chiedere l'intera sequenza in una sola generazione — su
 clip lunghe i modelli perdono coerenza a metà strada.
 
+**Vedi anche:** `identity-lock.md` — il blocco `[IDENTITY]` va incollato in ogni prompt insieme a `[CHARACTER]`.
+
 **Regola d'oro:** il blocco `[CHARACTER]` qui sotto va incollato **identico**
 in ogni prompt. È quello che tiene insieme il personaggio tra uno shot e
 l'altro. Cambiare anche solo una parola fa derivare il design.
