@@ -1,0 +1,19 @@
+# Media pesanti: mai nel repo (la history di Git li tiene per sempre)
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mkv
+*.wav
+*.mp3
+
+# Foto del soggetto: restano in locale, non su GitHub.
+# Sono immagini di una persona reale e riconoscibile.
+reference/*.jpg
+reference/*.jpeg
+reference/*.png
+!reference/README.md
+
+# Sistema
+.DS_Store
+Thumbs.db
